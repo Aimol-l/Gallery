@@ -1,0 +1,8 @@
+build/
+build-*/
+*.user
+CMakeLists.txt.user*
+.qmlc/
+*.qmlc
+.DS_Store
+dist/

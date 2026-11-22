@@ -1,0 +1,16 @@
+[Desktop Entry]
+Type=Application
+Name=Gallery
+Name[zh_CN]=图片查看器
+GenericName=Image Viewer
+GenericName[zh_CN]=图片查看器
+Comment=Native image viewer for Denial
+Comment[zh_CN]=Denial 平板原生图片查看器
+Exec=env WAYLAND_DISPLAY=wayland-1 XDG_RUNTIME_DIR=/run/user/1000 /usr/bin/gallery %F
+TryExec=/usr/bin/gallery
+Icon=dev.denial.gallery
+Terminal=false
+Categories=Graphics;Viewer;
+MimeType=image/jpeg;image/png;image/webp;image/gif;image/bmp;
+StartupNotify=true
+StartupWMClass=dev.denial.gallery

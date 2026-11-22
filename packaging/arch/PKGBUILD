@@ -1,0 +1,37 @@
+# Maintainer: Denial <dev.denial>
+# 本地打包：scripts/package-pacman.sh（会自动生成源码 tar 并同步 pkgver）
+
+pkgname=denial-gallery
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="Native image viewer for Denial tablets (Qt 6 / QML)"
+arch=('aarch64' 'x86_64')
+license=('GPL-3.0-or-later')
+depends=(
+    'qt6-base'
+    'qt6-declarative'
+    'qt6-wayland'
+    'qt6-svg'
+    'ffmpeg'
+    'hicolor-icon-theme'
+)
+optdepends=(
+    'qt6-imageformats: GIF/WebP 动图与缩略图'
+    'noto-fonts-cjk: 中文界面字体'
+)
+makedepends=('cmake' 'ninja')
+source=("$pkgname-$pkgver.tar.gz")
+sha256sums=('SKIP')
+
+build() {
+    cd "$srcdir/$pkgname-$pkgver"
+    cmake -S . -B build -G Ninja \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_INSTALL_PREFIX=/usr
+    cmake --build build
+}
+
+package() {
+    cd "$srcdir/$pkgname-$pkgver"
+    DESTDIR="$pkgdir" cmake --install build
+}

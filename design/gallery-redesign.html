@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Denial 图片查看器 denial_gallery — 设计稿</title>
+<style>
+  :root {
+    --accent: #6d5bd0;
+    --accent-soft: rgba(109, 91, 208, .10);
+    --ink: #1c1c1f;
+    --muted: #5f6470;
+    --faint: #9aa0ad;
+    --line: #e4e6ec;
+    --bg: #f6f7f9;
+    --status: 44px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #eef0f4; color: var(--ink);
+    font-family: "Noto Sans SC", "Noto Sans CJK SC", system-ui, sans-serif;
+    padding: 44px 0 80px;
+    -webkit-user-select: none; user-select: none;
+  }
+  .doc { max-width: 1760px; margin: 0 auto; padding: 0 44px; }
+  h1 { font-size: 30px; font-weight: 640; }
+  .sub { margin-top: 10px; color: #5f6674; font-size: 14px; line-height: 1.7; max-width: 940px; }
+  .sub b { color: var(--ink); font-weight: 600; }
+  .sub code { background: #e9e6f6; border-radius: 5px; padding: 1px 6px; font-size: 12.5px; color: #5b4bb8; }
+
+  .board { margin-top: 48px; }
+  .board .cap { display: flex; align-items: baseline; gap: 12px; margin-bottom: 14px; }
+  .board .cap .tag { font-size: 10.5px; font-weight: 700; letter-spacing: .1em; color: var(--accent); border: 1px solid rgba(109,91,208,.4); border-radius: 999px; padding: 3px 10px; }
+  .board .cap .t { font-size: 17.5px; font-weight: 620; }
+  .board .cap .n { margin-left: auto; font-size: 12px; color: var(--faint); }
+  .note { margin-top: 13px; font-size: 12.5px; color: #5f6674; line-height: 1.7; max-width: 1500px; }
+  .note b { color: var(--ink); font-weight: 600; }
+
+  /* ---------- 设备 ---------- */
+  .device {
+    position: relative; margin: 0 auto; border-radius: 24px; overflow: hidden;
+    background: #fbfbfc;
+    box-shadow: 0 20px 60px rgba(20,22,28,.15), 0 0 0 1px #dfe1e7;
+  }
+  .device.land { width: 1707px; height: 1067px; }
+  .device.port { width: 800px; height: 1280px; }
+
+  .statusbar {
+    position: absolute; left: 0; right: 0; top: 0; height: var(--status); z-index: 40;
+    display: flex; align-items: center; padding: 0 24px;
+    font-size: 13px; color: #2b2b30; background: #fff; border-bottom: 1px solid var(--line);
+  }
+  .statusbar .clock { font-weight: 600; }
+  .statusbar .dots { margin-left: auto; display: flex; gap: 6px; align-items: center; }
+  .statusbar .dot { width: 6px; height: 6px; border-radius: 50%; background: #2b2b30; opacity: .4; }
+  .statusbar .batt { width: 20px; height: 10px; border: 1.5px solid #2b2b30; border-radius: 3px; opacity: .4; position: relative; }
+  .statusbar .batt::after { content: ""; position: absolute; right: -4px; top: 2.5px; width: 2px; height: 5px; background: #2b2b30; border-radius: 0 2px 2px 0; }
+
+  /* 标题栏（同 sysmon 约定） */
+  .titlebar {
+    position: absolute; top: var(--status); left: 0; right: 0; height: 52px; z-index: 35;
+    display: flex; align-items: center; gap: 4px; padding: 0 10px 0 18px;
+    background: #fff; border-bottom: 1px solid var(--line);
+  }
+  .titlebar .tb-brand { display: flex; align-items: center; gap: 10px; font-size: 14px; font-weight: 620; }
+  .titlebar .tb-logo {
+    width: 28px; height: 28px; border-radius: 8px;
+    background: linear-gradient(150deg, color-mix(in srgb, var(--accent) 70%, white), var(--accent));
+    color: #fff; display: grid; place-items: center; font-size: 13px;
+  }
+  .titlebar .tb-sp { flex: 1; }
+  .titlebar .tb-btn { width: 36px; height: 36px; border-radius: 8px; display: grid; place-items: center; font-size: 14px; color: var(--muted); }
+  .titlebar .tb-btn:hover { background: #f1f2f5; color: var(--ink); }
+  .titlebar .tb-btn.close:hover { background: #e5484d; color: #fff; }
+  .titlebar .tb-search {
+    display: flex; align-items: center; gap: 8px;
+    background: #f1f2f5; border: 1px solid var(--line); border-radius: 8px;
+    padding: 6px 12px; font-size: 12.5px; color: var(--faint); width: 230px; margin-right: 4px;
+  }
+  .titlebar .tb-zoom { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--faint); margin: 0 8px; }
+  .titlebar .tb-zoom .tr { width: 80px; height: 4px; border-radius: 999px; background: #e9ebef; position: relative; }
+  .titlebar .tb-zoom .tr i { position: absolute; left: 0; top: 0; bottom: 0; width: 55%; border-radius: 999px; background: var(--muted); }
+  .titlebar .tb-zoom .kn { position: absolute; left: 55%; top: 50%; transform: translate(-50%,-50%); width: 12px; height: 12px; border-radius: 50%; background: #fff; border: 1px solid #c9ccd4; box-shadow: 0 1px 3px rgba(0,0,0,.15); }
+
+  .shell { position: absolute; inset: 0; padding-top: calc(var(--status) + 52px); display: flex; background: #fff; }
+
+  /* 左栏 */
+  .sidebar {
+    width: 208px; flex: 0 0 208px;
+    background: #f7f8fa; border-right: 1px solid var(--line);
+    padding: 14px 10px; display: flex; flex-direction: column;
+  }
+  .sidebar .it { display: flex; align-items: center; gap: 10px; border-radius: 8px; padding: 8px 12px; font-size: 13.5px; color: var(--muted); }
+  .sidebar .it .ic { width: 18px; text-align: center; font-size: 14px; color: var(--faint); }
+  .sidebar .it .ct { margin-left: auto; font-size: 11px; color: var(--faint); font-variant-numeric: tabular-nums; }
+  .sidebar .it.on { background: #fff; color: var(--ink); font-weight: 600; box-shadow: 0 1px 3px rgba(20,22,28,.08), 0 0 0 1px var(--line); }
+  .sidebar .it.on .ic { color: var(--accent); }
+  .sidebar .sep { height: 1px; background: var(--line); margin: 9px 8px; }
+  .sidebar .grp { font-size: 10.5px; color: var(--faint); font-weight: 700; letter-spacing: .08em; padding: 7px 12px 4px; }
+
+  /* 主区域 */
+  .main { flex: 1; min-width: 0; display: flex; flex-direction: column; background: var(--bg); }
+  .toolbar { display: flex; align-items: center; gap: 12px; padding: 14px 22px; background: #fff; border-bottom: 1px solid var(--line); }
+  .toolbar h2 { font-size: 19px; font-weight: 660; }
+  .toolbar .ct { font-size: 12px; color: var(--faint); margin-left: 6px; }
+  .toolbar .sp { flex: 1; }
+  .tsearch { display: flex; align-items: center; gap: 8px; background: #f1f2f5; border: 1px solid var(--line); border-radius: 8px; padding: 7px 12px; font-size: 12.5px; color: var(--faint); width: 220px; }
+  .tbtn { width: 34px; height: 34px; border-radius: 8px; display: grid; place-items: center; font-size: 14px; color: var(--muted); border: 1px solid var(--line); background: #fff; }
+  .zoom { display: flex; align-items: center; gap: 8px; font-size: 11.5px; color: var(--faint); }
+  .zoom .tr { width: 90px; height: 4px; border-radius: 999px; background: #e9ebef; position: relative; }
+  .zoom .tr i { position: absolute; left: 0; top: 0; bottom: 0; width: 55%; border-radius: 999px; background: var(--muted); }
+  .zoom .kn { position: absolute; left: 55%; top: 50%; transform: translate(-50%,-50%); width: 12px; height: 12px; border-radius: 50%; background: #fff; border: 1px solid #c9ccd4; box-shadow: 0 1px 3px rgba(0,0,0,.15); }
+
+  .gridwrap { flex: 1; overflow: hidden; padding: 16px 22px 24px; }
+  .day { font-size: 12.5px; color: var(--muted); font-weight: 650; margin: 10px 0 8px; display: flex; align-items: baseline; gap: 8px; }
+  .day .n { font-size: 11px; color: var(--faint); font-weight: 400; }
+  .thumbs { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; }
+  .thumb { position: relative; aspect-ratio: 1; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 4px rgba(20,22,28,.10); }
+  .thumb .nm { position: absolute; left: 6px; right: 6px; bottom: 5px; font-size: 9.5px; color: rgba(255,255,255,.92); background: rgba(0,0,0,.28); border-radius: 4px; padding: 1px 5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .thumb.sel { box-shadow: 0 0 0 3px var(--accent), 0 1px 4px rgba(20,22,28,.1); }
+  .thumb .vid { position: absolute; right: 6px; top: 6px; font-size: 9px; color: #fff; background: rgba(0,0,0,.4); border-radius: 4px; padding: 1px 5px; }
+  .thumb.screen { background: #fff; }
+  .thumb.screen::before { content: ""; position: absolute; left: 10%; right: 10%; top: 16%; height: 6%; border-radius: 2px; background: #e9ebef; }
+  .thumb.screen::after { content: ""; position: absolute; left: 10%; right: 18%; top: 30%; height: 4%; border-radius: 2px; background: #eef0f3; box-shadow: 0 12px 0 #eef0f3, 0 24px 0 #eef0f3, 0 36px 0 #eef0f3; }
+
+  /* ---------- 单图查看 ---------- */
+  .viewer { position: absolute; inset: 0; padding-top: var(--status); background: #eceef2; display: flex; flex-direction: column; }
+  .vtop { height: 54px; flex: 0 0 54px; display: flex; align-items: center; gap: 12px; padding: 0 14px; background: rgba(255,255,255,.86); backdrop-filter: blur(16px); border-bottom: 1px solid var(--line); }
+  .vbtn { width: 38px; height: 38px; border-radius: 9px; display: grid; place-items: center; font-size: 16px; color: var(--muted); }
+  .vbtn:hover { background: #f1f2f5; }
+  .vtitle { font-size: 13.5px; font-weight: 620; }
+  .vmeta { font-size: 11.5px; color: var(--faint); margin-left: 8px; }
+  .vtop .sp { flex: 1; }
+  .vstage { flex: 1; position: relative; display: grid; place-items: center; padding: 14px 44px; }
+  .photo { width: 100%; height: 100%; max-height: 640px; border-radius: 6px; box-shadow: 0 20px 60px rgba(20,22,28,.25); position: relative; overflow: hidden; }
+  .photo .pn { position: absolute; left: 20px; bottom: 16px; font-size: 11px; color: rgba(255,255,255,.9); background: rgba(0,0,0,.3); border-radius: 6px; padding: 3px 10px; }
+  .vbottom { height: 66px; flex: 0 0 66px; display: flex; align-items: center; justify-content: center; gap: 6px; background: rgba(255,255,255,.86); backdrop-filter: blur(16px); border-top: 1px solid var(--line); }
+  .vb { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 14px; border-radius: 9px; font-size: 10.5px; color: var(--muted); }
+  .vb .i { font-size: 16px; }
+  .vb:hover { background: #f1f2f5; }
+  .vb.danger { color: #c9483f; }
+  .vb .dim { color: var(--faint); }
+  .zoomchip { margin: 0 10px; font-size: 11.5px; color: var(--muted); background: #f1f2f5; border-radius: 999px; padding: 4px 12px; font-variant-numeric: tabular-nums; }
+
+  /* 查看模式的左侧图片列表 */
+  .viewer.split { flex-direction: row; }
+  .filmstrip { width: 138px; flex: 0 0 138px; background: #f7f8fa; border-right: 1px solid var(--line); display: flex; flex-direction: column; }
+  .filmstrip .fs-hd { padding: 9px 12px; font-size: 11px; color: var(--faint); border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 6px; }
+  .filmstrip .fs-hd b { color: var(--ink); font-weight: 600; }
+  .filmstrip .fs-list { flex: 1; overflow: hidden; padding: 8px; display: flex; flex-direction: column; gap: 7px; }
+  .fs-item { display: flex; flex-direction: column; gap: 4px; border-radius: 8px; padding: 4px; }
+  .fs-item.on { background: #fff; box-shadow: 0 0 0 2px var(--accent); }
+  .fs-item .fs-thumb { height: 72px; border-radius: 6px; }
+  .fs-item .fs-nm { font-size: 9.5px; color: var(--faint); text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .fs-item.on .fs-nm { color: var(--ink); font-weight: 600; }
+  .viewer-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+
+  /* 信息面板 */
+  .infopanel { position: absolute; right: 16px; top: 70px; width: 280px; z-index: 45; background: rgba(255,255,255,.96); border: 1px solid var(--line); border-radius: 14px; box-shadow: 0 16px 44px rgba(20,22,28,.18); padding: 16px 18px; }
+  .infopanel .h { font-size: 13px; font-weight: 700; margin-bottom: 10px; }
+  .infopanel .r { display: flex; padding: 6px 0; border-bottom: 1px solid #f0f2f5; font-size: 12px; }
+  .infopanel .r:last-child { border: none; }
+  .infopanel .r .k { width: 76px; color: var(--faint); }
+  .infopanel .r .v { color: var(--ink); }
+
+  /* 裁剪模式 */
+  .cropstage { position: relative; }
+  .cropbox { position: absolute; border: 2px solid #fff; box-shadow: 0 0 0 9999px rgba(20,22,28,.55); }
+  .cropbox .h { position: absolute; width: 18px; height: 18px; background: #fff; border-radius: 50%; }
+  .cropbox .h.tl { left: -9px; top: -9px; } .cropbox .h.tr { right: -9px; top: -9px; }
+  .cropbox .h.bl { left: -9px; bottom: -9px; } .cropbox .h.br { right: -9px; bottom: -9px; }
+  .cropbox .grid3 { position: absolute; inset: 0; background-image: linear-gradient(rgba(255,255,255,.35) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.35) 1px, transparent 1px); background-size: 33.33% 33.33%; }
+
+  /* 竖版 */
+  .pstage { position: absolute; left: 0; right: 0; top: calc(var(--status) + 52px); bottom: 0; background: var(--bg); display: flex; flex-direction: column; }
+  .pfolder { display: flex; gap: 8px; padding: 12px 16px; overflow: hidden; background: #fff; border-bottom: 1px solid var(--line); }
+  .pchip { font-size: 12px; font-weight: 600; border-radius: 999px; padding: 6px 14px; background: #fff; border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
+  .pchip.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .pgrid { flex: 1; overflow: hidden; padding: 12px 14px 90px; }
+  .pgrid .thumbs { grid-template-columns: repeat(3, 1fr); gap: 6px; }
+
+  .anno { position: absolute; z-index: 70; pointer-events: none; font-size: 12.5px; color: #3f3a52; line-height: 1.55;
+    background: rgba(255,255,255,.95); border: 1px solid rgba(109,91,208,.4); border-radius: 10px; padding: 8px 12px; max-width: 250px;
+    box-shadow: 0 8px 26px rgba(20,22,28,.1); }
+  .anno b { color: var(--ink); font-weight: 620; }
+
+  .foot { margin-top: 56px; padding-top: 20px; border-top: 1px solid #dde0e6; color: var(--faint); font-size: 12px; line-height: 1.8; }
+</style>
+</head>
+<body>
+<div class="doc">
+
+  <h1>Denial 图片查看器 denial_gallery — 设计稿</h1>
+  <p class="sub">
+    网格浏览 + 沉浸式单图查看 + 基础编辑。左侧文件夹导航，右侧缩略图网格；
+    点开一张进入查看模式（缩放/平移/旋转/裁剪/分享）。
+    数据源：Linux 主目录与 Android（droidloom 共享目录）的照片同列，沿用 sysmon 的亮色 + 标题栏约定。
+  </p>
+
+  <!-- ============ 1. 网格 ============ -->
+  <div class="board">
+    <div class="cap"><span class="tag">网格</span><span class="t">相册：左文件夹 + 缩略图网格</span><span class="n">横屏 · 1707×1067</span></div>
+    <div class="device land">
+      <div class="statusbar"><span class="clock">14:32</span><span class="dots"><span class="dot"></span><span class="dot"></span><span class="batt"></span></span></div>
+      <div class="titlebar">
+        <div class="tb-brand"><div class="tb-logo">▧</div><span>图片查看器</span></div>
+        <div class="tb-search" style="margin-left:10px;"><span>⌕</span><span>搜索文件名…</span></div>
+        <div class="tb-btn">⇅</div>
+        <div class="tb-zoom"><span>小</span><div class="tr"><i></i><span class="kn"></span></div><span>大</span></div>
+        <div class="tb-sp"></div>
+        <div class="tb-btn">−</div>
+        <div class="tb-btn">▢</div>
+        <div class="tb-btn close">✕</div>
+      </div>
+      <div class="shell">
+        <div class="sidebar">
+          <div class="it on"><span class="ic">▦</span>全部照片<span class="ct">128</span></div>
+          <div class="it"><span class="ic">◷</span>最近添加<span class="ct">24</span></div>
+          <div class="it"><span class="ic">★</span>收藏<span class="ct">9</span></div>
+          <div class="sep"></div>
+          <div class="grp">文件夹</div>
+          <div class="it"><span class="ic">▣</span>Pictures<span class="ct">86</span></div>
+          <div class="it"><span class="ic">▢</span>屏幕截图<span class="ct">21</span></div>
+          <div class="it"><span class="ic">↓</span>下载<span class="ct">14</span></div>
+          <div class="it"><span class="ic">◐</span>Android 相机<span class="ct">7</span></div>
+        </div>
+        <div class="main">
+          <div class="toolbar">
+            <h2>全部照片</h2><span class="ct">128 张 · 4 个文件夹</span>
+          </div>
+          <div class="gridwrap">
+            <div class="day">今天 <span class="n">6 张</span></div>
+            <div class="thumbs">
+              <div class="thumb" style="background:linear-gradient(150deg,#f6c9a8,#e08a5c);"><span class="nm">IMG_20261113_1412.jpg</span></div>
+              <div class="thumb" style="background:linear-gradient(150deg,#a8c4f6,#5c86e0);"><span class="nm">IMG_20261113_1408.jpg</span></div>
+              <div class="thumb" style="background:linear-gradient(150deg,#b8e0c8,#5cb885);"><span class="nm">IMG_20261113_1355.jpg</span></div>
+              <div class="thumb screen"><span class="nm">Screenshot-1794151666.png</span></div>
+              <div class="thumb" style="background:linear-gradient(150deg,#e8c8f0,#b06cd0);"><span class="nm">IMG_20261113_1120.jpg</span></div>
+              <div class="thumb" style="background:linear-gradient(150deg,#f0e0b0,#d0a840);"><span class="nm vid">▶ 0:32</span><span class="nm">VID_20261113_0930.mp4</span></div>
+            </div>
+            <div class="day">昨天 <span class="n">8 张</span></div>
+            <div class="thumbs">
+              <div class="thumb" style="background:linear-gradient(150deg,#c8d8f0,#7c9cd8);"><span class="nm">Screenshot-1794110444-146.png</span></div>
+              <div class="thumb" style="background:linear-gradient(150deg,#f0c8c8,#d08080);"><span class="nm">IMG_20261112_2210.jpg</span></div>
+              <div class="thumb" style="background:linear-gradient(150deg,#c8e8e0,#70c0b0);"><span class="nm">IMG_20261112_1930.jpg</span></div>
+              <div class="thumb sel" style="background:linear-gradient(150deg,#d8c8f0,#9878d0);"><span class="nm">IMG_20261112_1750.jpg</span></div>
+              <div class="thumb screen"><span class="nm">Screenshot-1794110129-400.png</span></div>
+              <div class="thumb" style="background:linear-gradient(150deg,#e0d8c8,#b0a080);"><span class="nm">IMG_20261112_1430.jpg</span></div>
+            </div>
+            <div class="day">11 月 10 日 <span class="n">12 张</span></div>
+            <div class="thumbs">
+              <div class="thumb" style="background:linear-gradient(150deg,#c8d8e8,#7898c0);"><span class="nm">IMG_20261110_2100.jpg</span></div>
+              <div class="thumb" style="background:linear-gradient(150deg,#e8d0c0,#c09070);"><span class="nm">IMG_20261110_1840.jpg</span></div>
+              <div class="thumb" style="background:linear-gradient(150deg,#d0e8c8,#90c080);"><span class="nm">IMG_20261110_1520.jpg</span></div>
+              <div class="thumb screen"><span class="nm">Screenshot-1794037476.png</span></div>
+              <div class="thumb" style="background:linear-gradient(150deg,#f0d8e8,#d0a0c0);"><span class="nm">IMG_20261110_1100.jpg</span></div>
+              <div class="thumb" style="background:linear-gradient(150deg,#c8e0f0,#80b0d8);"><span class="nm">IMG_20261110_0900.jpg</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class="note">
+      左栏：<b>全部照片 / 最近添加 / 收藏</b>，分隔线下按文件夹列（Pictures / 屏幕截图 / 下载 / <b>Android 相机</b>）。
+      缩略图按日期分组，屏幕截图带文档样式预览，视频带时长角标。右下角滑块调缩略图大小。
+    </p>
+  </div>
+
+  <!-- ============ 2. 单图查看 ============ -->
+  <div class="board">
+    <div class="cap"><span class="tag">查看</span><span class="t">单图：沉浸式 + 底部操作栏</span><span class="n">横屏 · 双击/单机放大</span></div>
+    <div class="device land">
+      <div class="statusbar"><span class="clock">14:32</span><span class="dots"><span class="dot"></span><span class="dot"></span><span class="batt"></span></span></div>
+      <div class="viewer split">
+        <div class="filmstrip">
+          <div class="fs-hd"><b>3</b> / 128 <span style="margin-left:auto;">全部照片</span></div>
+          <div class="fs-list">
+            <div class="fs-item"><div class="fs-thumb" style="background:linear-gradient(150deg,#c8d8f0,#7c9cd8);"></div><span class="fs-nm">1408.jpg</span></div>
+            <div class="fs-item"><div class="fs-thumb" style="background:linear-gradient(150deg,#f0c8c8,#d08080);"></div><span class="fs-nm">2210.jpg</span></div>
+            <div class="fs-item on"><div class="fs-thumb" style="background:linear-gradient(150deg,#d8c8f0,#9878d0);"></div><span class="fs-nm">1750.jpg</span></div>
+            <div class="fs-item"><div class="fs-thumb" style="background:linear-gradient(150deg,#c8e8e0,#70c0b0);"></div><span class="fs-nm">1930.jpg</span></div>
+            <div class="fs-item"><div class="fs-thumb" style="background:linear-gradient(150deg,#f0e0b0,#d0a840);"></div><span class="fs-nm">0930.mp4</span></div>
+          </div>
+        </div>
+        <div class="viewer-main">
+        <div class="vtop">
+          <div class="vbtn">←</div>
+          <div class="vtitle">IMG_20261112_1750.jpg</div>
+          <div class="vmeta">4032 × 3024 · 4.2 MB · 3 / 128</div>
+          <div class="sp"></div>
+          <div class="vbtn">ⓘ</div>
+          <div class="vbtn">⋯</div>
+          <div class="vbtn">−</div>
+          <div class="vbtn">▢</div>
+          <div class="vbtn">✕</div>
+        </div>
+        <div class="vstage">
+          <div class="photo" style="background:linear-gradient(150deg,#d8c8f0,#9878d0 55%,#6d5bd0);">
+            <span class="pn">IMG_20261112_1750.jpg</span>
+          </div>
+        </div>
+        <div class="vbottom">
+          <div class="vb"><span class="i">‹</span><span>上一张</span></div>
+          <div class="vb"><span class="i">⊖</span><span>缩小</span></div>
+          <div class="vb"><span class="i">⊕</span><span>放大</span></div>
+          <div class="zoomchip">适应窗口 · 100%</div>
+          <div class="vb"><span class="i">⟳</span><span>旋转</span></div>
+          <div class="vb"><span class="i">◱</span><span>裁剪</span></div>
+          <div class="vb"><span class="i">↗</span><span>分享</span></div>
+          <div class="vb danger"><span class="i">🗑</span><span>删除</span></div>
+          <div class="vb"><span class="i">›</span><span>下一张</span></div>
+        </div>
+      </div>
+      </div>
+    </div>
+    <p class="note">
+      查看模式是全窗口的：顶部文件名/尺寸/序号 + 信息与更多；底部缩放/旋转/裁剪/分享/删除。
+      <b>双击图片在"适应窗口"与"100%"之间切换</b>，双指捏合自由缩放，拖动平移。
+      左右方向键或底部「上一张 / 下一张」按钮切换。
+    </p>
+  </div>
+
+  <!-- ============ 3. 信息面板 + 缩放 ============ -->
+  <div class="board">
+    <div class="cap"><span class="tag">信息</span><span class="t">图片信息面板 + 缩放状态</span><span class="n">横屏</span></div>
+    <div class="device land">
+      <div class="statusbar"><span class="clock">14:32</span><span class="dots"><span class="dot"></span><span class="dot"></span><span class="batt"></span></span></div>
+      <div class="viewer split">
+        <div class="filmstrip">
+          <div class="fs-hd"><b>3</b> / 128 <span style="margin-left:auto;">全部照片</span></div>
+          <div class="fs-list">
+            <div class="fs-item"><div class="fs-thumb" style="background:linear-gradient(150deg,#c8d8f0,#7c9cd8);"></div><span class="fs-nm">1408.jpg</span></div>
+            <div class="fs-item"><div class="fs-thumb" style="background:linear-gradient(150deg,#f0c8c8,#d08080);"></div><span class="fs-nm">2210.jpg</span></div>
+            <div class="fs-item on"><div class="fs-thumb" style="background:linear-gradient(150deg,#d8c8f0,#9878d0);"></div><span class="fs-nm">1750.jpg</span></div>
+            <div class="fs-item"><div class="fs-thumb" style="background:linear-gradient(150deg,#c8e8e0,#70c0b0);"></div><span class="fs-nm">1930.jpg</span></div>
+            <div class="fs-item"><div class="fs-thumb" style="background:linear-gradient(150deg,#f0e0b0,#d0a840);"></div><span class="fs-nm">0930.mp4</span></div>
+          </div>
+        </div>
+        <div class="viewer-main">
+        <div class="vtop">
+          <div class="vbtn">←</div>
+          <div class="vtitle">IMG_20261112_1750.jpg</div>
+          <div class="vmeta">4032 × 3024 · 4.2 MB · 3 / 128</div>
+          <div class="sp"></div>
+          <div class="vbtn" style="background:#eef0f3;">ⓘ</div>
+          <div class="vbtn">⋯</div>
+          <div class="vbtn">−</div>
+          <div class="vbtn">▢</div>
+          <div class="vbtn">✕</div>
+        </div>
+        <div class="vstage">
+          <div class="photo" style="background:linear-gradient(150deg,#d8c8f0,#9878d0 55%,#6d5bd0); transform:scale(1.35);">
+            <span class="pn">IMG_20261112_1750.jpg · 缩放 135%</span>
+          </div>
+        </div>
+        <div class="vbottom">
+          <div class="vb"><span class="i">‹</span><span>上一张</span></div>
+          <div class="vb"><span class="i">⊖</span><span>缩小</span></div>
+          <div class="vb"><span class="i">⊕</span><span>放大</span></div>
+          <div class="zoomchip">135% · 拖动平移</div>
+          <div class="vb"><span class="i">⟳</span><span>旋转</span></div>
+          <div class="vb"><span class="i">◱</span><span>裁剪</span></div>
+          <div class="vb"><span class="i">↗</span><span>分享</span></div>
+          <div class="vb danger"><span class="i">🗑</span><span>删除</span></div>
+          <div class="vb"><span class="i">›</span><span>下一张</span></div>
+        </div>
+      </div>
+      </div>
+      <div class="infopanel">
+        <div class="h">图片信息</div>
+        <div class="r"><span class="k">文件名</span><span class="v">IMG_20261112_1750.jpg</span></div>
+        <div class="r"><span class="k">尺寸</span><span class="v">4032 × 3024</span></div>
+        <div class="r"><span class="k">大小</span><span class="v">4.2 MB</span></div>
+        <div class="r"><span class="k">拍摄时间</span><span class="v">2026-11-12 17:50</span></div>
+        <div class="r"><span class="k">位置</span><span class="v">~/Pictures/2026/11</span></div>
+        <div class="r"><span class="k">EXIF</span><span class="v">ISO 100 · f/1.8 · 1/60s</span></div>
+        <div class="r"><span class="k">来源</span><span class="v">Android 相机</span></div>
+      </div>
+    </div>
+    <p class="note">
+      信息面板叠加在右上角（点 ⓘ 开关），包含尺寸/大小/时间/路径/EXIF/来源。
+      <b>缩放状态常驻在底部栏</b>，显示当前百分比与"拖动平移"提示。
+    </p>
+  </div>
+
+  <!-- ============ 4. 裁剪 ============ -->
+  <div class="board">
+    <div class="cap"><span class="tag">裁剪</span><span class="t">基础编辑：裁剪 + 旋转</span><span class="n">横屏</span></div>
+    <div class="device land">
+      <div class="statusbar"><span class="clock">14:32</span><span class="dots"><span class="dot"></span><span class="dot"></span><span class="batt"></span></span></div>
+      <div class="viewer">
+        <div class="vtop">
+          <div class="vbtn">✕</div>
+          <div class="vtitle">裁剪</div>
+          <div class="vmeta">IMG_20261112_1750.jpg</div>
+          <div class="sp"></div>
+          <div class="vbtn">⟳</div>
+          <div class="vbtn">⟲</div>
+          <div class="vbtn">▣</div>
+        </div>
+        <div class="vstage">
+          <div class="photo" style="background:linear-gradient(150deg,#d8c8f0,#9878d0 55%,#6d5bd0);">
+            <div class="cropstage" style="position:absolute; left:16%; top:14%; width:68%; height:72%;">
+              <div class="cropbox">
+                <div class="grid3"></div>
+                <div class="h tl"></div><div class="h tr"></div><div class="h bl"></div><div class="h br"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="vbottom">
+          <div class="vb"><span class="i">⟲</span><span>左旋</span></div>
+          <div class="vb"><span class="i">⟳</span><span>右旋</span></div>
+          <div class="zoomchip">自由 · 拖动四角调整</div>
+          <div class="vb"><span class="i">1:1</span><span>比例</span></div>
+          <div class="vb"><span class="i">↺</span><span>重置</span></div>
+          <div class="sp" style="flex:1;"></div>
+          <div class="vb" style="color:var(--accent); font-weight:700;"><span class="i">✓</span><span>完成</span></div>
+        </div>
+      </div>
+    </div>
+    <p class="note">
+      裁剪：四角手柄 + 九宫格辅助线，支持自由/1:1/16:9 等比例，旋转 90° 与重置。
+      完成时询问"覆盖原图 / 另存为副本"。
+    </p>
+  </div>
+
+  <!-- ============ 5. 竖版 ============ -->
+  <div class="board">
+    <div class="cap"><span class="tag">竖版</span><span class="t">竖屏：文件夹 chips + 三列网格</span><span class="n">竖屏 · 800×1280</span></div>
+    <div class="device port">
+      <div class="statusbar"><span class="clock">14:32</span><span class="dots"><span class="dot"></span><span class="dot"></span><span class="batt"></span></span></div>
+      <div class="titlebar">
+        <div class="tb-brand"><div class="tb-logo">▧</div><span>图片查看器</span></div>
+        <div class="tb-sp"></div>
+        <div class="tb-btn">⌕</div>
+        <div class="tb-btn">−</div>
+        <div class="tb-btn close">✕</div>
+      </div>
+      <div class="pstage">
+        <div class="pfolder">
+          <span class="pchip on">全部 128</span>
+          <span class="pchip">最近</span>
+          <span class="pchip">收藏</span>
+          <span class="pchip">截图</span>
+          <span class="pchip">Android</span>
+        </div>
+        <div class="pgrid">
+          <div class="day" style="margin-top:4px;">今天 <span class="n">6 张</span></div>
+          <div class="thumbs">
+            <div class="thumb" style="background:linear-gradient(150deg,#f6c9a8,#e08a5c);"></div>
+            <div class="thumb" style="background:linear-gradient(150deg,#a8c4f6,#5c86e0);"></div>
+            <div class="thumb" style="background:linear-gradient(150deg,#b8e0c8,#5cb885);"></div>
+            <div class="thumb screen"></div>
+            <div class="thumb" style="background:linear-gradient(150deg,#e8c8f0,#b06cd0);"></div>
+            <div class="thumb" style="background:linear-gradient(150deg,#f0e0b0,#d0a840);"><span class="vid">▶ 0:32</span></div>
+            <div class="thumb" style="background:linear-gradient(150deg,#c8d8f0,#7c9cd8);"></div>
+            <div class="thumb" style="background:linear-gradient(150deg,#f0c8c8,#d08080);"></div>
+            <div class="thumb" style="background:linear-gradient(150deg,#c8e8e0,#70c0b0);"></div>
+          </div>
+          <div class="day">昨天 <span class="n">8 张</span></div>
+          <div class="thumbs">
+            <div class="thumb" style="background:linear-gradient(150deg,#d8c8f0,#9878d0);"></div>
+            <div class="thumb screen"></div>
+            <div class="thumb" style="background:linear-gradient(150deg,#e0d8c8,#b0a080);"></div>
+            <div class="thumb" style="background:linear-gradient(150deg,#c8d8e8,#7898c0);"></div>
+            <div class="thumb" style="background:linear-gradient(150deg,#e8d0c0,#c09070);"></div>
+            <div class="thumb" style="background:linear-gradient(150deg,#d0e8c8,#90c080);"></div>
+            <div class="thumb screen"></div>
+            <div class="thumb" style="background:linear-gradient(150deg,#f0d8e8,#d0a0c0);"></div>
+            <div class="thumb" style="background:linear-gradient(150deg,#c8e0f0,#80b0d8);"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class="note">
+      竖版：左栏收进<b>顶部文件夹 chips</b>（横滚），网格 6 列 → <b>3 列</b>。
+      单图查看在竖版里隐藏底部文字的副标签（只留图标），最大化图片区域。
+    </p>
+  </div>
+
+  <div class="foot">
+    Denial 图片查看器 denial_gallery · 设计稿 · 2026-11-13<br>
+    左文件夹 + 右网格 → 沉浸查看 → 基础编辑；亮色 · 标题栏三段式；accent 跟随全局色调。<br>
+    图片来源：Linux 主目录与 Android 共享目录（droidloom download/pictures 互通）。支持 JPEG/PNG/WebP/GIF/AVIF/SVG；视频用 ffmpeg 取帧做缩略图。
+  </div>
+
+</div>
+</body>
+</html>
