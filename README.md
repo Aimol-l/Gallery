@@ -1,47 +1,99 @@
-# Gallery — Denial 平板原生图片查看器
+# Gallery
 
-Qt 6 / QML 实现的图片查看器，面向小米平板 5（Denial Wayland 合成器），
-本地 x86 开发、设备端 arm64 编译。
+**Denial 平板上的原生图片查看器** —— Qt 6 / QML 编写的本地相册，为小米平板 5 的 Wayland 合成器打造，也能在任意 Linux 桌面上运行。
 
-## 现状
+![Qt](https://img.shields.io/badge/Qt-6.5%2B-41CD52?logo=qt&logoColor=white)
+![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20Wayland-informational)
+![License](https://img.shields.io/badge/license-MIT-blue)
 
-| 模块 | 状态 |
-|---|---|
-| 网格 | 左栏分类/文件夹、按日期分组、搜索、排序、缩略图大小滑块、竖屏 chips + 3 列、方向键/Enter 导航、拖放打开、长按多选删除 |
-| 缩略图 | 256px 磁盘缓存（path+mtime+size 作 key），视频用 ffmpeg 取首帧 |
-| 查看 | filmstrip、适应窗口/100% 双击切换、Ctrl+滚轮/捏合缩放、拖动平移、旋转、信息面板、收藏、GIF/WebP 动图、复制路径 |
-| 删除 | 确认后移入 XDG 回收站（`.trashinfo`），绝不直接 unlink |
-| 刷新 | QFileSystemWatcher 递归监听，400ms 防抖重扫 |
-| 性能 | 边扫描边分批显示、行按需构建、静默比对不复制全库、按目录增量重扫、索引缓存二次启动秒开、缩略图缓存上限与清理 |
-| 设置 | 全局色调、默认排序、缩略图大小、最近添加范围、缓存上限、亮/暗/跟随系统主题、整体缩放（Ctrl + = / - / 0）、缓存统计/清理/重建索引、恢复默认、关于 |
-| 集成 | 打开方式（%F）、单实例转发、窗口几何记忆、应用图标、拖放打开 |
-| 未做 | 撤销删除、裁剪写回、分享、幻灯片、视频播放、EXIF 深度解析、单元测试 |
+<p align="center">
+  <img src="assets/screenshots/01-grid.png" alt="网格视图：侧栏、日期分组、缩略图网格" width="880">
+</p>
 
-## 构建 / 运行
+## 功能
+
+- **浏览**：侧栏分类与文件夹、按日期自动分组、实时搜索、时间 / 文件名 / 大小三种排序、缩略图大小滑块、键盘方向键与 Enter 导航、长按多选批量删除、拖放打开文件、视频首帧缩略图。
+- **查看**：filmstrip 快速切换、双击在「适应窗口」与 100% 间切换、捏合或 Ctrl + 滚轮缩放（10%–800%）、缩放后拖动平移、旋转、信息面板、收藏、复制路径、GIF / WebP 动图播放。
+- **性能**：扫描边进行边分批显示，首屏约 150ms 可见；索引缓存让二次启动秒开（27 万张实测约 0.35s）；目录变化增量重扫，单个目录约 5–6ms；可见行按需构建，峰值内存约 338MB。
+- **数据与集成**：删除一律移入 XDG 回收站（绝不直接 unlink）；单实例转发、窗口几何记忆、`.desktop` 与应用图标集成。
+- **外观与设置**：亮色 / 暗色 / 跟随系统主题、全局色调、界面整体缩放（Ctrl + = / - / 0）、缩略图缓存上限与清理、手动重建索引。
+
+## 截图
+
+<table>
+  <tr>
+    <td width="50%"><img src="assets/screenshots/02-viewer.png" alt="查看模式"></td>
+    <td width="50%"><img src="assets/screenshots/03-info.png" alt="信息面板"></td>
+  </tr>
+  <tr>
+    <td align="center">查看模式：filmstrip + 舞台 + 底部操作栏</td>
+    <td align="center">信息面板：尺寸、大小、修改时间、路径</td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="assets/screenshots/04-settings.png" alt="设置页"></td>
+    <td width="50%"><img src="assets/screenshots/06-dark.png" alt="暗色主题"></td>
+  </tr>
+  <tr>
+    <td align="center">设置：排序、缩略图、界面缩放</td>
+    <td align="center">暗色主题</td>
+  </tr>
+  <tr>
+    <td colspan="2" align="center">
+      <img src="assets/screenshots/05-portrait.png" alt="竖屏布局" width="320"><br>
+      竖屏：侧栏收为顶部 chips，网格 3 列
+    </td>
+  </tr>
+</table>
+
+## 构建
+
+依赖 Qt 6.5+（Core / Gui / Qml / Quick / QuickControls2 / Concurrent）、CMake 3.21+、Ninja；视频缩略图需要 `ffmpeg`。
+
+Arch Linux 上：
 
 ```bash
-cmake --preset linux-debug
-cmake --build --preset linux-debug -j8
-./build/linux-debug/bin/gallery
+sudo pacman -S --needed base-devel cmake ninja \
+    qt6-base qt6-declarative qt6-wayland qt6-svg qt6-imageformats ffmpeg
 ```
 
-本地调试建议用测试 home（避免扫描真实的上十万张图）：
+编译并运行：
 
 ```bash
-GALLERY_HOME=/tmp/gallery-home ./build/linux-debug/bin/gallery
+cmake --preset linux-release
+cmake --build --preset linux-release -j8
+./build/linux-release/bin/gallery
 ```
 
-设备端：
+装了 [just](https://github.com/casey/just) 的话，`just b`（Debug 构建）、`just r`（构建并运行）、`just shot`（离屏截图）更省事。
+
+### 用演示数据运行
+
+默认会扫描 `~/Pictures`、`~/Downloads`、`~/Documents`。想用干净的演示图库（本仓库 README 截图就是用它生成的）：
 
 ```bash
-./scripts/deploy-arm.sh          # scp 到平板后在设备上 cmake + ninja
-./scripts/package-pacman.sh      # 生成 Arch pacman 包（产物 dist/pacman/）
-./scripts/package-pacman.sh -i   # 构建并安装（sudo pacman -U）
+./scripts/gen-demo-data.sh                       # 生成 assets/demo/
+GALLERY_HOME=assets/demo ./build/linux-release/bin/gallery
+```
+
+### 部署到平板
+
+```bash
+./scripts/deploy-arm.sh          # 同步源码到设备并原地编译（arm64）
+./scripts/package-pacman.sh      # 生成 Arch pacman 包（产物在 dist/pacman/）
+./scripts/package-pacman.sh -i   # 构建并安装
 ```
 
 ## 文档
 
 - [docs/GALLERY.md](docs/GALLERY.md) — 设计规范（权威需求）
-- [docs/CONTEXT.md](docs/CONTEXT.md) — 设备 / 环境实测事实与首期范围
+- [docs/CONTEXT.md](docs/CONTEXT.md) — 目标设备、环境实测事实与首期范围
 - [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) — 目录结构、开发用环境变量、交互速查
-- [design/gallery-redesign.html](design/gallery-redesign.html) — 视觉设计稿
+- [design/gallery-redesign.html](design/gallery-redesign.html) — 视觉设计稿（浏览器打开）
+
+## 路线图
+
+裁剪与写回、分享、幻灯片、视频播放、EXIF 深度解析、单元测试。
+
+## 许可证
+
+[MIT](LICENSE) © 2026 子菲鱼
