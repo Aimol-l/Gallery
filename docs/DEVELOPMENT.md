@@ -21,7 +21,7 @@ qml/
   settings/                # 设置页（通用/外观/存储/关于）
   dialogs/                 # 应用内确认弹窗
 packaging/                 # .desktop
-scripts/deploy-arm.sh      # 同步到平板并设备端编译
+build.py                   # 构建 + 打包（arch/deb/rpm）+ 平板部署
 ```
 
 QML 通过 `qt_add_qml_module` 注册为 `Gallery` 模块，`engine.loadFromModule("Gallery", "Main")` 加载；`qml/` 下文件按 glob 收集，新增文件不用改 CMake。
@@ -29,16 +29,14 @@ QML 通过 `qt_add_qml_module` 注册为 `Gallery` 模块，`engine.loadFromModu
 ## 2. 构建 / 运行
 
 ```bash
-cmake --preset linux-debug
-cmake --build --preset linux-debug -j8
+cmake -B build/linux-debug -G Ninja -DCMAKE_BUILD_TYPE=Debug
+cmake --build build/linux-debug -j8
 ./build/linux-debug/bin/gallery
 
 # Release
-cmake --preset linux-release
-cmake --build --preset linux-release -j8
+cmake -B build/linux-release -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build build/linux-release -j8
 ```
-
-`justfile` 提供 `just b` / `just r` / `just shot` / `just deploy`，本机未安装 `just` 时直接用上面的命令。
 
 ### 2.1 用 mcpp 构建（可选的第二条构建路径）
 
@@ -55,8 +53,11 @@ QML 走官方 `rules-qml` 插件（mcpp-plugins 0.27.0，首次构建自动下�
 Qt 可用 `QT_ROOT_DIR` 覆盖）。
 
 注意：mcpp 沙箱 loader 不认 RPATH，直接执行 `target/**/bin/gallery` 需
-`LD_LIBRARY_PATH=/usr/lib`；`mcpp run` 自动处理。限制：仅 x86_64 本机（aarch64 交叉
-需平板 sysroot）；`mcpp pack` 需引擎 ≥ 2026.11.23.1 才打包 QML 插件装载的 Qt 库。
+`LD_LIBRARY_PATH=/usr/lib`；`mcpp run` 自动处理。打包用 `mcpp pack --mode system`
+（与 pacman 包同一哲学，依赖宿主 Qt）：产物约 2.5MB，含 `bin/gallery`、`qt.conf`
+与部署好的 QML 模块（仅 Basic 样式）和 imageformats/platforms 插件，干净环境验证
+可跑。默认的 vendored 模式当前收集不到 Qt 的宿主传递依赖（报 libgobject 等找不到），
+不可用。限制：仅 x86_64 本机（aarch64 交叉需平板 sysroot）。
 
 ## 3. 本地测试数据
 
@@ -160,30 +161,39 @@ GALLERY_HOME=/tmp/gallery-home GALLERY_SCREENSHOT=/tmp/g.png \
 - 切换筛选：「最近添加」~20ms、「收藏」~10ms、「Pictures」~40ms（首次启动建排序 ~150ms release）
 - 缓存文件：索引 ~23MB；缩略图按上限自动清理
 
-## 8. 打包（pacman）
+## 8. 打包 / 部署（build.py）
 
 ```bash
-./scripts/package-pacman.sh        # 只出包
-./scripts/package-pacman.sh -i     # 出包并安装（makepkg -sif）
+python3 build.py --build cmake --pkg arch     # pacman 包（出包即校验）
+python3 build.py --build mcpp --pkg deb       # deb/rpm/all 同理
+# aarch64 包：在平板的源码目录里跑同一脚本
+python3 build.py --target aarch64 --pkg arch
 ```
 
-- 包名 `denial-gallery`，架构跟随构建机（平板 aarch64 / 本机 x86_64）。
-- 脚本从当前源码生成 `dist/pacman/denial-gallery-<ver>.tar.gz`，复制并同步
-  `packaging/arch/PKGBUILD` 的 `pkgver`，然后 `makepkg -sf`；产物在
-  `dist/pacman/denial-gallery-<ver>-1-<arch>.pkg.tar.zst`。
-- 依赖写在 PKGBUILD：`qt6-base qt6-declarative qt6-wayland qt6-svg qt6-imageformats
-  ffmpeg hicolor-icon-theme`；`noto-fonts-cjk` 是可选依赖（中文字体）。
-  构建需要 `base-devel + cmake ninja`；缺依赖时用 `-i`（`makepkg -s`）让 makepkg 安装。
+- 参数：`--build cmake|mcpp`、`--target x86|aarch64`（必须与当前机器一致，不符直接报错，
+  不支持交叉编译；aarch64 包在平板源码目录里跑同一脚本）、`--pkg none|arch|deb|rpm|all`、
+  `--profile release|debug`、`--run`（构建后直接运行）。
+- 三种包同一 /usr 布局：`usr/bin/gallery` + desktop + 图标（cmake 另含 `usr/share/gallery/qml`）。
+  依赖同旧 PKGBUILD：qt6-base / qt6-declarative / qt6-wayland / qt6-svg / qt6-imageformats +
+  ffmpeg + hicolor-icon-theme。包名 denial-gallery，版本号读自 CMakeLists.txt。
+- arch 包手写 .PKGINFO/.MTREE + zstd 压缩 tar（pacman 包不是 ar 归档）；deb 手写 ar
+  （debian-binary + control.tar.gz + data.tar.xz，tar 必须 GNU 格式，dpkg 不认 PAX）；
+  本机没有 rpmbuild 时，rpm 自动进 fedora 容器构建（需 docker）。
+- 容器验证（docker）：archlinux 容器 `pacman -U` 装真实 qt6 依赖 + GALLERY_SCREENSHOT
+  截图 ✓ 全链路；debian:trixie `apt-get install ./deb`、fedora `dnf install ./rpm`
+  安装 ✓。注意二进制带 Qt_6.12 符号版本，deb/rpm 在 Qt 更旧的发行版上装得上但跑不了
+  （面向同代 Qt 的系统，如平板的 Arch ARM）。
+- mcpp 产物 PT_INTERP 指向 mcpp 沙箱 loader（不认 RUNPATH），打包时 patchelf 改回宿主
+  loader；无 patchelf 时退化为启动脚本 + /usr/lib/gallery/。
 - 安装内容：
   - `/usr/bin/gallery`
   - `/usr/share/applications/dev.denial.gallery.desktop`
   - `/usr/share/icons/hicolor/scalable/apps/dev.denial.gallery.svg`
-  - `/usr/share/gallery/qml/Gallery/{qmldir,gallery.qmltypes}`（QML 模块根 qmldir；
-    构建目录靠 `bin/qt.conf`，安装后靠这个目录 + `applicationDirPath()/../share` 导入路径）
+  - `/usr/share/gallery/qml/Gallery/{qmldir,gallery.qmltypes}`（仅 cmake 后端；mcpp 后端
+    QML 模块静态编进二进制。cmake 安装态靠这个目录 + `applicationDirPath()/../share` 导入）
 - `.desktop` 的 `Exec` 会显式带上平板需要的
   `WAYLAND_DISPLAY=wayland-1 XDG_RUNTIME_DIR=/run/user/1000`；如果设备用户 uid 或
   显示名不同，安装前改 `packaging/dev.denial.gallery.desktop`。
-- 本地自用包使用 `sha256sums=('SKIP')`；若要发 AUR，请补真实 checksum、`url` 并生成 `.SRCINFO`。
 
 ## 9. 交互速查
 

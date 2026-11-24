@@ -7,3 +7,4 @@ CMakeLists.txt.user*
 .DS_Store
 dist/
 target/
+__pycache__/

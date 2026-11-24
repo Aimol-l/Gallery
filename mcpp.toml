@@ -2,7 +2,7 @@
 name        = "gallery"
 version     = "0.1.0"
 description = "Denial 平板原生图片查看器（Qt 6 / QML）"
-license     = "GPL-3.0-or-later"
+license     = "MIT"
 standard    = "c++23"
 platforms   = ["linux"]
 

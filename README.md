@@ -59,12 +59,10 @@ sudo pacman -S --needed base-devel cmake ninja \
 编译并运行：
 
 ```bash
-cmake --preset linux-release
-cmake --build --preset linux-release -j8
+cmake -B build/linux-release -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build build/linux-release -j8
 ./build/linux-release/bin/gallery
 ```
-
-装了 [just](https://github.com/casey/just) 的话，`just b`（Debug 构建）、`just r`（构建并运行）、`just shot`（离屏截图）更省事。
 
 ### 用 mcpp 构建（可选）
 
@@ -77,20 +75,25 @@ mcpp run
 
 ### 用演示数据运行
 
-默认会扫描 `~/Pictures`、`~/Downloads`、`~/Documents`。想用干净的演示图库（本仓库 README 截图就是用它生成的）：
+默认会扫描 `~/Pictures`、`~/Downloads`、`~/Documents`。仓库自带一套干净的演示图库
+（README 截图就是用它生成的）：
 
 ```bash
-./scripts/gen-demo-data.sh                       # 生成 assets/demo/
 GALLERY_HOME=assets/demo ./build/linux-release/bin/gallery
 ```
 
 ### 部署到平板
 
+源码同步与打包是两件独立的事。先把仓库同步到平板（rsync/scp 皆可），然后在平板上：
+
 ```bash
-./scripts/deploy-arm.sh          # 同步源码到设备并原地编译（arm64）
-./scripts/package-pacman.sh      # 生成 Arch pacman 包（产物在 dist/pacman/）
-./scripts/package-pacman.sh -i   # 构建并安装
+python3 build.py --target aarch64 --pkg arch    # 平板原生构建并出 pacman 包
+sudo pacman -U dist/buildpy/denial-gallery-*-aarch64.pkg.tar.zst
 ```
+
+本机 `python3 build.py --pkg deb|rpm|all` 出对应格式的包（无 rpmbuild 时 rpm 自动进
+fedora 容器构建）；`--build mcpp` 走 mcpp/rules-qml 构建路径。`--target` 与本机架构
+不符会直接报错——不支持交叉编译。
 
 ## 文档
 

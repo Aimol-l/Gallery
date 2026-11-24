@@ -1,5 +1,5 @@
 # Maintainer: Denial <dev.denial>
-# 本地打包：scripts/package-pacman.sh（会自动生成源码 tar 并同步 pkgver）
+# 打包入口是根目录 build.py（--pkg arch）；本文件留作将来发 AUR 的底稿，依赖需与其同步
 
 pkgname=denial-gallery
 pkgver=0.1.0

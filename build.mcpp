@@ -1,17 +1,8 @@
-// mcpp 构建程序 —— 通过 mcpp.rules.qml 复刻 qt_add_qml_module：
-// moc -> qmltyperegistrar -> qmlcachegen -> rcc，QML 模块静态编进可执行文件，
-// main.cpp 照常用 loadFromModule 加载，与 CMake 构建完全同一份代码。
-// 本文件只在 `mcpp build` 时由引擎编译执行（CMake 不经过这里）。
 import std;
 import mcpp;
 import mcpp.rules.qt;
 import mcpp.rules.qml;
 
-// ── Arch 系统 Qt 的适配层 ──────────────────────────────────────────────
-// rules-qt/qml 按官方布局 <QT_ROOT>/{bin/moc, lib/, include/, qml/, plugins/} 探测
-// SDK；Arch（含 Denial 平板）把工具放在 /usr/lib/qt6/、头文件放在 /usr/include/qt6/、
-// 库放在 /usr/lib，三级前缀互不相同，探测不到。且 /usr/bin/moc 是 Qt5 的。
-// 这里在 target/.qt-root 下用符号链接拼出官方布局视图（幂等，mcpp clean 后自愈）。
 static std::string ensureQtSdkView()
 {
     namespace fs = std::filesystem;
@@ -31,7 +22,6 @@ static std::string ensureQtSdkView()
         fs::create_directory_symlink(target, link, ec2);
     };
 
-    // 工具：Arch 在 /usr/lib/qt6/ 顶层（upstream 的 libexec 被拍平）。
     for (const char *t : { "moc", "rcc", "uic", "qmlcachegen",
                            "qmltyperegistrar", "qmlimportscanner", "qmllint" }) {
         const fs::path tool = fs::path("/usr/lib/qt6") / t;
@@ -51,9 +41,7 @@ static std::string ensureQtSdkView()
             linkDir(base / "include" / name, it->path().generic_string());
     }
 
-    // 库目录：整个 /usr/lib（mcpp run 的运行时搜索目录，Qt 及其宿主传递依赖都可解析）。
     linkDir(base / "lib", "/usr/lib");
-    // QML 生态：import 闭包读取与模块部署；platforms/imageformats 插件拷贝源。
     linkDir(base / "qml", "/usr/lib/qt6/qml");
     if (fs::exists("/usr/lib/qt6/plugins", ec))
         linkDir(base / "plugins", "/usr/lib/qt6/plugins");
@@ -67,20 +55,14 @@ int main() {
     namespace qml = mcpp::rules::qml;
     qml::options o;
 
-    // ── rules-qt 的选项（rules-qml 蕴含它，走 options::qt）──
-    // CMake 里 Qt6::Quick 传递依赖 Qt6::Network（main.cpp 的 QLocalServer/QLocalSocket），
-    // mcpp 没有传递依赖，显式列出。
     o.qt.modules = { "Core", "Gui", "Network", "Qml", "Quick", "QuickControls2", "Concurrent" };
     o.qt.deploy_plugins = { "platforms", "imageformats" };
-    // moc 只处理这三个声明了 Q_OBJECT 的头文件。不用全树扫描（project_headers）：
-    // dist/ 里的打包暂存源码会与 include/ 下的同名头文件产生 moc 输出重名冲突。
     o.qt.moc = mcpp::rules::qt::moc_scan::listed;
     o.qt.moc_headers = {
         "include/gallery/core/appearance.h",
         "include/gallery/core/cachecontroller.h",
         "include/gallery/core/photomodel.h",
     };
-    // SDK 三级查找：官方 Qt 安装用 QT_ROOT_DIR 覆盖；Arch 系统 Qt 走 SDK 视图。
     if (const char *env = std::getenv("QT_ROOT_DIR")) {
         o.qt.root = env;
     } else if (std::filesystem::exists("/usr/lib/qt6/moc")) {
@@ -88,9 +70,12 @@ int main() {
     } else {
         o.qt.root = "/usr";
     }
-    // Arch/Fedora 把 Qt 头文件装在 <prefix>/include/qt6；官方布局自带 include/。
     if (std::filesystem::exists(o.qt.root + "/../include/qt6"))
         mcpp::include_dir((o.qt.root + "/../include/qt6").c_str());
+    // 宿主库目录：Qt 的传递依赖（glib/curl/duktape）住在这里。
+    // 声明给引擎后 mcpp run 的加载路径与 mcpp pack 的闭包收集都能解析。
+    if (std::filesystem::exists("/usr/lib"))
+        mcpp::runtime_search_dir("/usr/lib");
 
     // ── Gallery QML 模块 ──
     qml::qml_module gallery;
