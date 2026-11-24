@@ -1,0 +1,8 @@
+<!DOCTYPE RCC>
+<RCC version="1.0">
+    <!-- mcpp 构建使用：应用图标内嵌为 :/resources/dev.denial.gallery.svg，
+         与 CMake 的 qt_add_resources 路径一致。CMake 构建不使用本文件。 -->
+    <qresource prefix="/resources">
+        <file>dev.denial.gallery.svg</file>
+    </qresource>
+</RCC>

@@ -66,6 +66,15 @@ cmake --build --preset linux-release -j8
 
 装了 [just](https://github.com/casey/just) 的话，`just b`（Debug 构建）、`just r`（构建并运行）、`just shot`（离屏截图）更省事。
 
+### 用 mcpp 构建（可选）
+
+也可以用 [mcpp](https://github.com/mcpp-community/mcpp) 构建（QML 走官方 `rules-qml` 插件，与 CMake 共用同一份源码）：
+
+```bash
+mcpp build --profile debug/release
+mcpp run
+```
+
 ### 用演示数据运行
 
 默认会扫描 `~/Pictures`、`~/Downloads`、`~/Documents`。想用干净的演示图库（本仓库 README 截图就是用它生成的）：

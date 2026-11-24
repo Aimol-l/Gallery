@@ -6,3 +6,4 @@ CMakeLists.txt.user*
 *.qmlc
 .DS_Store
 dist/
+target/

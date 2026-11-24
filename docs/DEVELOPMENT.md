@@ -40,6 +40,24 @@ cmake --build --preset linux-release -j8
 
 `justfile` 提供 `just b` / `just r` / `just shot` / `just deploy`，本机未安装 `just` 时直接用上面的命令。
 
+### 2.1 用 mcpp 构建（可选的第二条构建路径）
+
+```bash
+mcpp build                        # dev profile
+mcpp build --profile release      # Release
+mcpp run                          # 构建并运行
+```
+
+QML 走官方 `rules-qml` 插件（mcpp-plugins 0.27.0，首次构建自动下载），与 `qt_add_qml_module`
+等价，和 CMake 共用同一份 `main.cpp`。分工：`mcpp.toml` 是包与依赖声明；`build.mcpp`
+配置 Qt 模块 / Gallery QML 模块，并自动适配 Arch 的 Qt 布局（在 `target/.qt-root/` 搭
+官方布局 SDK 视图——工具/头文件/库分居三个前缀，且 `/usr/bin/moc` 是 Qt5 的；官方布局
+Qt 可用 `QT_ROOT_DIR` 覆盖）。
+
+注意：mcpp 沙箱 loader 不认 RPATH，直接执行 `target/**/bin/gallery` 需
+`LD_LIBRARY_PATH=/usr/lib`；`mcpp run` 自动处理。限制：仅 x86_64 本机（aarch64 交叉
+需平板 sysroot）；`mcpp pack` 需引擎 ≥ 2026.11.23.1 才打包 QML 插件装载的 Qt 库。
+
 ## 3. 本地测试数据
 
 本机 `~/Pictures` 有几十万张图，直接跑会很慢。用假 home：

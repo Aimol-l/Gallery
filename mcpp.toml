@@ -1,0 +1,24 @@
+[package]
+name        = "gallery"
+version     = "0.1.0"
+description = "Denial 平板原生图片查看器（Qt 6 / QML）"
+license     = "GPL-3.0-or-later"
+standard    = "c++23"
+platforms   = ["linux"]
+
+[build-dependencies.mcpp]
+plugins = { version = "0.27.0", features = ["rules-qml"], host-module = true }
+
+[build]
+sources  = ["src/**/*.cpp", "resources/resources.qrc"]
+allow_host_libs = true
+ldflags  = [
+    "-L/usr/lib",
+    "-Wl,-rpath,/usr/lib",
+]
+
+[target.x86_64-linux-gnu]
+cxx_runtime = "host-coupled"
+
+[target.aarch64-linux-gnu]
+cxx_runtime = "host-coupled"
