@@ -33,7 +33,7 @@ int main(int argc, char *argv[])
     QGuiApplication::setOrganizationName(QStringLiteral("denial"));
     QGuiApplication::setOrganizationDomain(QStringLiteral("dev.denial"));
     QGuiApplication::setApplicationName(QStringLiteral("gallery"));
-    QGuiApplication::setApplicationVersion(QStringLiteral("0.1.13"));
+    QGuiApplication::setApplicationVersion(QStringLiteral("0.1.14"));
     // Wayland app_id，必须与 .desktop 文件名 / StartupWMClass 一致
     QGuiApplication::setDesktopFileName(QStringLiteral("dev.denial.gallery"));
     QGuiApplication::setWindowIcon(QIcon(QStringLiteral(":/resources/dev.denial.gallery.svg")));
@@ -135,6 +135,17 @@ int main(int argc, char *argv[])
             const int index = qEnvironmentVariableIntValue("GALLERY_TRASH_INDEX");
             QTimer::singleShot(700, win, [win, index] {
                 QMetaObject::invokeMethod(win, "devTrash", Q_ARG(int, index));
+            });
+        }
+        // 开发辅助：对当前查看的照片弹删除确认框 / 确认删除
+        if (qEnvironmentVariableIntValue("GALLERY_REQUEST_DELETE") != 0) {
+            QTimer::singleShot(900, win, [win] {
+                QMetaObject::invokeMethod(win, "devRequestDeleteCurrent");
+            });
+        }
+        if (qEnvironmentVariableIntValue("GALLERY_CONFIRM_DELETE") != 0) {
+            QTimer::singleShot(1300, win, [win] {
+                QMetaObject::invokeMethod(win, "devConfirmDelete");
             });
         }
         if (qEnvironmentVariableIntValue("GALLERY_ROTATE") != 0) {

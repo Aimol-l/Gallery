@@ -1,6 +1,6 @@
 [package]
 name        = "gallery"
-version     = "0.1.13"
+version     = "0.1.14"
 description = "Denial 平板原生图片查看器（Qt 6 / QML）"
 license     = "MIT"
 standard    = "c++23"

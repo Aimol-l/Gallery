@@ -287,6 +287,13 @@ Window {
         viewer.openAt(index);
         viewer.requestDelete();
     }
+    // 对当前查看的照片弹删除确认框 / 确认删除（配合命令行打开验证删除后接续浏览）
+    function devRequestDeleteCurrent(): void {
+        viewer.requestDelete();
+    }
+    function devConfirmDelete(): void {
+        viewer.devConfirmDelete();
+    }
     function devTrash(index: int): bool {
         return library.moveToTrash(index);
     }

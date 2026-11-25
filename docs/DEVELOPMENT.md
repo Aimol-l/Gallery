@@ -86,6 +86,8 @@ GALLERY_HOME=/tmp/gallery-home ./build/linux-debug/bin/gallery
 | `GALLERY_ROTATE=1` | 打开后旋转 90° |
 | `GALLERY_DELETE_INDEX=N` | 打开删除确认框 |
 | `GALLERY_TRASH_INDEX=N` | 直接把第 N 张移到回收站 |
+| `GALLERY_REQUEST_DELETE=1` | 对当前查看的照片弹删除确认框（配合命令行打开验证删除后接续浏览） |
+| `GALLERY_CONFIRM_DELETE=1` | 配合上一项，确认删除 |
 | `GALLERY_SEARCH=text` | 设置搜索词 |
 | `GALLERY_SORT=0/1/2` | 时间 / 文件名 / 大小 |
 | `GALLERY_FILTER=all\|recent\|favorites\|pictures\|screenshots\|camera\|downloads\|documents` | 切换侧栏筛选 |
@@ -217,7 +219,7 @@ python3 build.py --target aarch64 --pkg arch
 | 缩放后拖动 | 平移 |
 | ← / → | 上一张 / 下一张（首尾循环） |
 | Esc | 关信息面板 → 返回网格 |
-| 底部删除 | 确认后移到回收站 |
+| 底部删除 | 确认后移到回收站，并接续显示下一张（该集合没有其他照片才回网格） |
 | ⓘ | 信息面板（含收藏切换） |
 | 缩放 > 适应窗口 | 底部显示百分比 + 拖动平移提示 |
 | 标题栏 ⚙ | 打开设置（通用 / 外观 / 存储 / 关于） |

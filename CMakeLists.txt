@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.21)
 
-project(Gallery VERSION 0.1.13 LANGUAGES CXX)
+project(Gallery VERSION 0.1.14 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)

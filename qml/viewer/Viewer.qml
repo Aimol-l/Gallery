@@ -20,6 +20,9 @@ Item {
     property bool infoOpen: false
     property string toastText: ""
     property int lastClosedIndex: -1
+    // 删除后要接续显示的照片路径：删除会同步触发模型 rebuild，
+    // 这时当前路径已失效，靠它避免被当成「文件不在了」而退出查看模式
+    property string deleteTargetPath: ""
 
     readonly property int total: model.photoCount
     readonly property var currentPhoto: {
@@ -45,6 +48,7 @@ Item {
         root.currentIndex = index;
         root.currentPath = pathAt(index);
         root.infoOpen = false;
+        root.deleteTargetPath = "";
         root.opened = true;
         root.forceActiveFocus();
     }
@@ -57,6 +61,7 @@ Item {
         root.currentIndex = -1;
         root.currentPath = "";
         root.playlist = [];
+        root.deleteTargetPath = "";
         root.dismissed();
     }
     function goTo(index: int): void {
@@ -83,6 +88,24 @@ Item {
         return -1;
     }
 
+    // 删除后应显示哪一张：按当前集合顺序取下一张（首尾循环），删除末张回退到前一张；
+    // 集合只剩这一张时返回空（退出查看模式）
+    function neighborPathAfterDelete(): string {
+        if (root.playlist.length > 0) {
+            if (root.playlist.length <= 1)
+                return "";
+            const pos = root.playlistPosition();
+            if (pos < 0)
+                return "";
+            return pathAt(root.playlist[(pos + 1) % root.playlist.length]);
+        }
+        if (root.model.photoCount <= 1)
+            return "";
+        const next = root.currentIndex + 1 < root.model.photoCount
+                   ? root.currentIndex + 1 : root.currentIndex - 1;
+        return pathAt(next);
+    }
+
     // 模型 rebuild（扫描完成/删除/收藏）后索引会漂移：重建目录播放列表并按路径重定位；
     // 文件已不在库里就退出查看模式
     Connections {
@@ -90,6 +113,19 @@ Item {
         function onRevisionChanged() {
             if (!root.opened || root.currentPath === "")
                 return;
+            // 删除流程：当前照片已被移除，改定位到删除前选好的相邻照片
+            if (root.deleteTargetPath !== "") {
+                const index = root.model.indexForPath(root.deleteTargetPath);
+                if (index < 0)
+                    return;
+                const target = root.deleteTargetPath;
+                root.deleteTargetPath = "";
+                root.currentIndex = index;
+                root.currentPath = target;
+                if (root.playlist.length > 0)
+                    root.playlist = root.model.indicesInDirectory(target);
+                return;
+            }
             if (root.playlist.length > 0) {
                 const ids = root.model.indicesInDirectory(root.currentPath);
                 if (ids.length > 0)
@@ -155,6 +191,10 @@ Item {
     }
     function devRotate(): void {
         stage.rotate();
+    }
+    function devConfirmDelete(): void {
+        if (deleteDialog.opened)
+            deleteDialog.accept();
     }
 
     onTotalChanged: {
@@ -461,13 +501,15 @@ Item {
         confirmText: qsTr("移到回收站")
         danger: true
         onAccepted: {
-            const index = root.currentIndex;
-            if (!root.model.moveToTrash(index))
+            // 删除会同步触发模型 rebuild，先记下删除后要显示的照片
+            const target = root.neighborPathAfterDelete();
+            root.deleteTargetPath = target;
+            if (!root.model.moveToTrash(root.currentIndex)) {
+                root.deleteTargetPath = "";
                 return;
-            if (root.model.photoCount === 0)
+            }
+            if (target === "")
                 root.close();
-            else
-                root.currentIndex = Math.min(index, root.model.photoCount - 1);
         }
     }
 
