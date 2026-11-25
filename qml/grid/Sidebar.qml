@@ -7,6 +7,15 @@ Item {
     id: root
     required property PhotoModel model
 
+    // 文件夹条目的图标（按 root id），未识别的用通用图标
+    readonly property var glyphs: ({
+        "pictures": "▣",
+        "screenshots": "▢",
+        "camera": "◐",
+        "downloads": "↓",
+        "documents": "▤"
+    })
+
     Rectangle {
         anchors.fill: parent
         color: Theme.sidebar
@@ -77,45 +86,21 @@ Item {
             color: Theme.faint
         }
 
-        SidebarItem {
-            width: parent.width
-            glyph: "▣"
-            label: qsTr("Pictures")
-            count: root.model.counts.pictures ?? 0
-            active: root.model.filter === "pictures"
-            onClicked: root.model.filter = "pictures"
-        }
-        SidebarItem {
-            width: parent.width
-            glyph: "▢"
-            label: qsTr("屏幕截图")
-            count: root.model.counts.screenshots ?? 0
-            active: root.model.filter === "screenshots"
-            onClicked: root.model.filter = "screenshots"
-        }
-        SidebarItem {
-            width: parent.width
-            glyph: "↓"
-            label: qsTr("下载")
-            count: root.model.counts.downloads ?? 0
-            active: root.model.filter === "downloads"
-            onClicked: root.model.filter = "downloads"
-        }
-        SidebarItem {
-            width: parent.width
-            glyph: "◐"
-            label: qsTr("Android 相机")
-            count: root.model.counts.camera ?? 0
-            active: root.model.filter === "camera"
-            onClicked: root.model.filter = "camera"
-        }
-        SidebarItem {
-            width: parent.width
-            glyph: "▤"
-            label: qsTr("文档")
-            count: root.model.counts.documents ?? 0
-            active: root.model.filter === "documents"
-            onClicked: root.model.filter = "documents"
+        // 文件夹入口来自 PhotoModel.sidebarEntries（只含实际存在的目录），
+        // 显示名随 XDG 用户目录 / 语言变化，不再写死
+        Repeater {
+            model: root.model.sidebarEntries
+
+            delegate: SidebarItem {
+                required property var modelData
+
+                width: parent.width
+                glyph: root.glyphs[modelData.id] ?? "▤"
+                label: modelData.label
+                count: root.model.counts[modelData.id] ?? 0
+                active: root.model.filter === modelData.id
+                onClicked: root.model.filter = modelData.id
+            }
         }
     }
 }

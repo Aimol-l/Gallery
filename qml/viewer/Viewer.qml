@@ -11,6 +11,12 @@ Item {
     property bool portrait: false
     property bool opened: false
     property int currentIndex: -1
+    property string currentPath: "" // 当前查看的路径，模型 rebuild 后据此重定位
+    // 目录播放列表（model 扁平索引）：文件管理器打开单个文件时只在其同目录内浏览；
+    // 空 = 全部照片（从网格进入时）
+    property var playlist: []
+
+    readonly property int playlistLength: playlist.length > 0 ? playlist.length : model.photoCount
     property bool infoOpen: false
     property string toastText: ""
     property int lastClosedIndex: -1
@@ -32,10 +38,12 @@ Item {
     focus: opened
     visible: opened
 
-    function openAt(index: int): void {
+    function openAt(index: int, ids): void {
         if (index < 0 || index >= root.model.photoCount)
             return;
+        root.playlist = ids ?? [];
         root.currentIndex = index;
+        root.currentPath = pathAt(index);
         root.infoOpen = false;
         root.opened = true;
         root.forceActiveFocus();
@@ -47,15 +55,84 @@ Item {
         root.opened = false;
         root.infoOpen = false;
         root.currentIndex = -1;
+        root.currentPath = "";
+        root.playlist = [];
         root.dismissed();
     }
     function goTo(index: int): void {
         if (index < 0 || index >= root.model.photoCount)
             return;
         root.currentIndex = index;
+        root.currentPath = pathAt(index);
     }
-    function next(): void { goTo(root.currentIndex + 1); }
-    function previous(): void { goTo(root.currentIndex - 1); }
+    function pathAt(index: int): string {
+        if (index < 0 || index >= root.model.photoCount)
+            return "";
+        const photo = root.model.photoAt(index);
+        return photo.path ?? "";
+    }
+
+    // 播放列表中的当前位置；非列表模式（playlist 为空）返回索引本身
+    function playlistPosition(): int {
+        if (root.playlist.length === 0)
+            return root.currentIndex;
+        for (let i = 0; i < root.playlist.length; ++i) {
+            if (root.playlist[i] === root.currentIndex)
+                return i;
+        }
+        return -1;
+    }
+
+    // 模型 rebuild（扫描完成/删除/收藏）后索引会漂移：重建目录播放列表并按路径重定位；
+    // 文件已不在库里就退出查看模式
+    Connections {
+        target: root.model
+        function onRevisionChanged() {
+            if (!root.opened || root.currentPath === "")
+                return;
+            if (root.playlist.length > 0) {
+                const ids = root.model.indicesInDirectory(root.currentPath);
+                if (ids.length > 0)
+                    root.playlist = ids;
+            }
+            if (root.currentIndex >= 0 && root.currentIndex < root.model.photoCount) {
+                const photo = root.model.photoAt(root.currentIndex);
+                if ((photo.path ?? "") === root.currentPath)
+                    return;
+            }
+            const index = root.model.indexForPath(root.currentPath);
+            if (index >= 0) {
+                root.currentIndex = index;
+            } else {
+                root.close();
+            }
+        }
+    }
+    // 在播放列表内循环切换（最后一张之后回到第一张）
+    function next(): void {
+        if (root.currentIndex < 0)
+            return;
+        if (root.playlist.length === 0) {
+            if (root.model.photoCount > 0)
+                root.goTo((root.currentIndex + 1) % root.model.photoCount);
+            return;
+        }
+        const pos = root.playlistPosition();
+        if (pos >= 0)
+            root.goTo(root.playlist[(pos + 1) % root.playlist.length]);
+    }
+    function previous(): void {
+        if (root.currentIndex < 0)
+            return;
+        if (root.playlist.length === 0) {
+            if (root.model.photoCount > 0)
+                root.goTo((root.currentIndex - 1 + root.model.photoCount) % root.model.photoCount);
+            return;
+        }
+        const pos = root.playlistPosition();
+        if (pos >= 0)
+            root.goTo(root.playlist[(pos - 1 + root.playlist.length) % root.playlist.length]);
+    }
     function step(direction: int): void {
         if (!root.opened || deleteDialog.opened)
             return;
@@ -157,7 +234,7 @@ Item {
                     if (!info || !info.dimensions)
                         return "";
                     return info.dimensions + " · " + info.size + " · "
-                           + (root.currentIndex + 1) + " / " + root.total;
+                           + (root.playlistPosition() + 1) + " / " + root.playlistLength;
                 }
                 font.family: Theme.fontFamily
                 font.pixelSize: 12
@@ -214,6 +291,7 @@ Item {
         model: root.model
         currentIndex: root.currentIndex
         total: root.total
+        playlist: root.playlist
         title: root.model.title
         onActivated: (index) => root.goTo(index)
     }
@@ -269,7 +347,7 @@ Item {
                 icon: "‹"
                 label: qsTr("上一张")
                 compact: root.portrait
-                disabled: root.currentIndex <= 0
+                disabled: root.playlistLength <= 1
                 onClicked: root.previous()
             }
             ViewerButton {
@@ -340,7 +418,7 @@ Item {
                 icon: "›"
                 label: qsTr("下一张")
                 compact: root.portrait
-                disabled: root.currentIndex >= root.total - 1
+                disabled: root.playlistLength <= 1
                 onClicked: root.next()
             }
         }

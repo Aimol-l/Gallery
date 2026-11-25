@@ -53,6 +53,23 @@ Window {
         openRetryTimer.start();
     }
 
+    // 文件管理器 / 命令行打开单个文件：切到其所在目录浏览（非递归），
+    // 侧栏与网格只显示同目录图片，扫描完成后定位到打开的那张
+    function openFromLauncher(path: string): void {
+        if (!path) {
+            window.requestActivate();
+            return;
+        }
+        if (!library.openFileScope(path)) {
+            window.showToast(qsTr("无法打开文件"));
+            return;
+        }
+        window.pendingOpenPath = path;
+        window.pendingOpenTries = 0;
+        openRetryTimer.start();
+        window.requestActivate();
+    }
+
     onWidthChanged: {
         if (window.geometryReady && window.visibility === Window.Windowed)
             window.normalWidth = width;
@@ -85,11 +102,15 @@ Window {
         repeat: true
         running: window.pendingOpenPath !== ""
         onTriggered: {
+            // 扫描是流式的：目标文件一旦出现在模型里就打开，不必等全量扫描结束
             const index = library.indexForPath(window.pendingOpenPath);
             if (index >= 0) {
-                viewer.openAt(index);
+                viewer.openAt(index, library.indicesInDirectory(window.pendingOpenPath));
                 window.pendingOpenPath = "";
-            } else if (++window.pendingOpenTries > 8) {
+                return;
+            }
+            // 兜底：无论扫描是否结束，30s 后都不再静默等待
+            if (++window.pendingOpenTries > 75) {
                 window.showToast(qsTr("无法打开：文件不在图片库中"));
                 window.pendingOpenPath = "";
             }

@@ -9,6 +9,8 @@ Item {
     required property PhotoModel model
     required property int currentIndex
     required property int total
+    // 目录播放列表（model 扁平索引）；空 = 按 total 连续显示全部
+    property var playlist: []
     property string title: ""
 
     signal activated(int index)
@@ -16,24 +18,45 @@ Item {
     readonly property int radius: 14
     property var indices: []
 
+    // 播放列表模式（文件管理器打开：只列同目录）；否则按 total 连续显示全部。
+    // 非列表模式不构造整段数组，避免大图库每次切换都遍历几十万项。
+    readonly property bool playlistMode: playlist.length > 0
+    readonly property int position: {
+        if (!playlistMode)
+            return Math.max(0, currentIndex);
+        const pos = playlist.indexOf(currentIndex);
+        return pos >= 0 ? pos : 0;
+    }
+    readonly property int count: playlistMode ? playlist.length : total
+
     function rebuild(): void {
-        if (total <= 0) {
+        if (count <= 0) {
             indices = [];
             return;
         }
-        const start = Math.max(0, currentIndex - radius);
-        const end = Math.min(total - 1, currentIndex + radius);
-        const list = [];
-        for (let i = start; i <= end; ++i)
-            list.push(i);
-        indices = list;
+        if (!playlistMode) {
+            const start = Math.max(0, position - radius);
+            const end = Math.min(total - 1, position + radius);
+            const list = [];
+            for (let i = start; i <= end; ++i)
+                list.push(i);
+            indices = list;
+            Qt.callLater(function() {
+                strip.positionViewAtIndex(position - start, ListView.Center);
+            });
+            return;
+        }
+        const start = Math.max(0, position - radius);
+        const end = Math.min(playlist.length - 1, position + radius);
+        indices = playlist.slice(start, end + 1);
         Qt.callLater(function() {
-            strip.positionViewAtIndex(currentIndex - start, ListView.Center);
+            strip.positionViewAtIndex(position - start, ListView.Center);
         });
     }
 
     onCurrentIndexChanged: rebuild()
     onTotalChanged: rebuild()
+    onPlaylistChanged: rebuild()
     Component.onCompleted: rebuild()
 
     Rectangle {
@@ -60,7 +83,7 @@ Item {
             anchors.leftMargin: 12
             anchors.verticalCenter: parent.verticalCenter
             textFormat: Text.RichText
-            text: "<b>" + (root.currentIndex + 1) + "</b> / " + root.total
+            text: "<b>" + (root.position + 1) + "</b> / " + root.count
             font.family: Theme.fontFamily
             font.pixelSize: 11
             color: Theme.faint

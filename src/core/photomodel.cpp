@@ -102,26 +102,60 @@ PhotoModel::PhotoModel(QObject *parent)
             });
 }
 
-QVector<PhotoModel::Root> PhotoModel::buildRoots()
+QVector<PhotoModel::Root> PhotoModel::buildRoots() const
 {
     // 本地开发可用 GALLERY_HOME 指向一个假 home（放少量测试图片），
     // 避免在 x86 上扫描真实的上十万张图。
     QString home = qEnvironmentVariable("GALLERY_HOME");
+    const bool testHome = !home.isEmpty();
     if (home.isEmpty())
         home = QStandardPaths::writableLocation(QStandardPaths::HomeLocation);
+
+    // 用户目录走 QStandardPaths：Linux 读 XDG user-dirs 配置（目录名随系统语言，
+    // 如中文系统的 图片/下载/文档），Windows/macOS 映射到系统对应目录。
+    // 测试环境（GALLERY_HOME）退回假 home 下的固定英文名。
+    auto stdDir = [testHome](QStandardPaths::StandardLocation loc) -> QString {
+        return testHome ? QString() : QStandardPaths::writableLocation(loc);
+    };
+    const QString pictures = stdDir(QStandardPaths::PicturesLocation);
+    const QString downloads = stdDir(QStandardPaths::DownloadLocation);
+    const QString documents = stdDir(QStandardPaths::DocumentsLocation);
+
     const QVector<Root> candidates = {
-        { QStringLiteral("pictures"), QStringLiteral("Pictures"), home + QStringLiteral("/Pictures") },
-        { QStringLiteral("screenshots"), QStringLiteral("屏幕截图"),
-          home + QStringLiteral("/Pictures/Screenshots") },
-        { QStringLiteral("camera"), QStringLiteral("Android 相机"),
-          home + QStringLiteral("/Pictures/Camera") },
-        { QStringLiteral("downloads"), QStringLiteral("下载"), home + QStringLiteral("/Downloads") },
-        { QStringLiteral("documents"), QStringLiteral("文档"), home + QStringLiteral("/Documents") },
+        { QStringLiteral("pictures"), tr("图片"),
+          pictures.isEmpty() ? home + QStringLiteral("/Pictures") : pictures },
+        // Screenshots / Camera 是图片目录下的平台惯例子目录（桌面/平板截图、相机；
+        // Android 侧惯例在 DCIM 下），不存在的候选由下面的 isDir 过滤自动隐藏。
+        { QStringLiteral("screenshots"), tr("屏幕截图"),
+          (pictures.isEmpty() ? home + QStringLiteral("/Pictures") : pictures)
+              + QStringLiteral("/Screenshots") },
+        { QStringLiteral("camera"), tr("相机"),
+          (pictures.isEmpty() ? home + QStringLiteral("/Pictures") : pictures)
+              + QStringLiteral("/Camera") },
+        { QStringLiteral("camera-dcim"), tr("相机"), home + QStringLiteral("/DCIM/Camera") },
+        { QStringLiteral("downloads"), tr("下载"),
+          downloads.isEmpty() ? home + QStringLiteral("/Downloads") : downloads },
+        { QStringLiteral("documents"), tr("文档"),
+          documents.isEmpty() ? home + QStringLiteral("/Documents") : documents },
     };
 
     QVector<Root> roots;
     for (const Root &root : candidates) {
         if (QFileInfo(root.path).isDir()) {
+            // DCIM 候选只在 Pictures/Camera 不存在时生效（同一入口，两种平台惯例）
+            if (root.id == QLatin1String("camera-dcim")) {
+                bool covered = false;
+                for (const Root &existing : roots)
+                    if (existing.id == QLatin1String("camera"))
+                        covered = true;
+                if (covered)
+                    continue;
+                Root r = root;
+                r.id = QStringLiteral("camera");
+                r.path = normalizedRoot(r.path);
+                roots.append(r);
+                continue;
+            }
             Root r = root;
             r.path = normalizedRoot(r.path);
             roots.append(r);
@@ -130,13 +164,81 @@ QVector<PhotoModel::Root> PhotoModel::buildRoots()
     return roots;
 }
 
-QString PhotoModel::folderLabel(const QString &id)
+QString PhotoModel::folderLabel(const QString &id) const
 {
-    for (const Root &root : buildRoots()) {
+    for (const Root &root : m_roots) {
         if (root.id == id)
             return root.label;
     }
     return id;
+}
+
+bool PhotoModel::openFileScope(const QString &filePath)
+{
+    const QFileInfo info(filePath);
+    if (!info.isFile())
+        return false;
+    const QString dir = normalizedRoot(info.absolutePath());
+
+    // 已在某个扫描根覆盖范围内：扫描与侧栏保持原样，主页不受打开方式影响
+    for (const Root &root : std::as_const(m_roots)) {
+        if (root.id != QLatin1String("external") && isUnder(dir, root.path))
+            return true;
+    }
+
+    // 扫描根外的文件（如 ~/Misc）：追加一个临时根让该目录可扫，但不进侧栏
+    Root external;
+    external.id = QStringLiteral("external");
+    external.label = QDir(dir).dirName();
+    external.path = dir;
+    external.flat = true;
+
+    for (Root &root : m_roots) {
+        if (root.id == QLatin1String("external")) {
+            if (root.path == dir)
+                return true;
+            root = external;
+            m_scopeDir = dir; // 跳过索引缓存读写
+            scan();
+            return true;
+        }
+    }
+    m_roots.append(external);
+    m_scopeDir = dir;
+    scan();
+    return true;
+}
+
+QVariantList PhotoModel::indicesInDirectory(const QString &filePath) const
+{
+    const QString dir = QFileInfo(filePath).absolutePath();
+    QVariantList list;
+    list.reserve(m_visible.size());
+    for (int i = 0; i < m_visible.size(); ++i) {
+        const int photoIndex = photoIndexAt(i);
+        if (photoIndex < 0)
+            continue;
+        const QString &path = m_photos.at(photoIndex).path;
+        if (path.left(path.lastIndexOf(QLatin1Char('/'))) == dir)
+            list.append(i);
+    }
+    return list;
+}
+
+QVariantList PhotoModel::sidebarEntries() const
+{
+    QVariantList list;
+    for (const Root &root : m_roots) {
+        // 临时根（文件管理器打开扫描根外文件时追加）不参与侧栏，
+        // 主页的文件夹项始终只反映标准用户目录
+        if (root.id == QLatin1String("external"))
+            continue;
+        list.append(QVariantMap{
+            { QStringLiteral("id"), root.id },
+            { QStringLiteral("label"), root.label },
+        });
+    }
+    return list;
 }
 
 PhotoModel::Signature PhotoModel::signatureFor(const PhotoEntry &entry)
@@ -205,7 +307,8 @@ void PhotoModel::scanRoots(const QVector<Root> &roots,
     for (const Root &root : scanRoots) {
         onDir(root.path);
         QDirIterator it(root.path, QDir::Files | QDir::NoSymLinks | QDir::NoDotAndDotDot,
-                        QDirIterator::Subdirectories);
+                        root.flat ? QDirIterator::NoIteratorFlags
+                                  : QDirIterator::Subdirectories);
         while (it.hasNext()) {
             it.next();
             const QFileInfo info = it.fileInfo();
@@ -253,6 +356,9 @@ QString PhotoModel::indexCachePath() const
 
 void PhotoModel::loadIndexCache()
 {
+    // 单目录作用域不走全局索引缓存（根不同，避免 23MB 索引来回覆写）
+    if (!m_scopeDir.isEmpty())
+        return;
     QElapsedTimer timer;
     timer.start();
 
@@ -321,6 +427,8 @@ void PhotoModel::loadIndexCache()
 
 void PhotoModel::saveIndexCache() const
 {
+    if (!m_scopeDir.isEmpty())
+        return;
     const QVector<PhotoEntry> snapshot = m_photos;
     const QString path = indexCachePath();
     QByteArrayList rootPaths;
@@ -409,11 +517,11 @@ void PhotoModel::setScanning(bool scanning)
 QString PhotoModel::title() const
 {
     if (m_filter == QLatin1String("all"))
-        return QStringLiteral("全部照片");
+        return tr("全部照片");
     if (m_filter == QLatin1String("recent"))
-        return QStringLiteral("最近添加");
+        return tr("最近添加");
     if (m_filter == QLatin1String("favorites"))
-        return QStringLiteral("收藏");
+        return tr("收藏");
     return folderLabel(m_filter);
 }
 
@@ -858,11 +966,13 @@ void PhotoModel::rescanDirs(const QSet<QString> &dirs)
     for (const QString &dir : dirs) {
         // 用包含该目录的最深根来判定隐藏路径
         QString rootPath;
+        bool flat = false;
         int rootLength = -1;
         for (const Root &root : std::as_const(m_roots)) {
             if (isUnder(dir, root.path) && root.path.size() > rootLength) {
                 rootLength = root.path.size();
                 rootPath = root.path;
+                flat = root.flat;
             }
         }
         if (rootPath.isEmpty())
@@ -870,7 +980,7 @@ void PhotoModel::rescanDirs(const QSet<QString> &dirs)
 
         scannedDirs.insert(dir);
         QDirIterator it(dir, QDir::Files | QDir::NoSymLinks | QDir::NoDotAndDotDot,
-                        QDirIterator::Subdirectories);
+                        flat ? QDirIterator::NoIteratorFlags : QDirIterator::Subdirectories);
         while (it.hasNext()) {
             if (--budget < 0) {
                 m_incrementalScanning = false;
@@ -1039,9 +1149,10 @@ void PhotoModel::toggleFavorite(int flatIndex)
 
 QVariantMap PhotoModel::photoAt(int flatIndex) const
 {
-    if (flatIndex < 0 || flatIndex >= m_visible.size())
+    const int photoIndex = photoIndexAt(flatIndex);
+    if (photoIndex < 0)
         return {};
-    const PhotoEntry &photo = m_photos.at(m_visible.at(flatIndex));
+    const PhotoEntry &photo = m_photos.at(photoIndex);
     return {
         { QStringLiteral("index"), flatIndex },
         { QStringLiteral("path"), photo.path },
@@ -1056,9 +1167,10 @@ QVariantMap PhotoModel::photoAt(int flatIndex) const
 
 QVariantMap PhotoModel::photoInfo(int flatIndex) const
 {
-    if (flatIndex < 0 || flatIndex >= m_visible.size())
+    const int photoIndex = photoIndexAt(flatIndex);
+    if (photoIndex < 0)
         return {};
-    const PhotoEntry &photo = m_photos.at(m_visible.at(flatIndex));
+    const PhotoEntry &photo = m_photos.at(photoIndex);
 
     QString dimensions = QStringLiteral("—");
     if (!photo.video) {
@@ -1089,9 +1201,10 @@ QVariantMap PhotoModel::photoInfo(int flatIndex) const
 
 bool PhotoModel::moveToTrash(int flatIndex)
 {
-    if (flatIndex < 0 || flatIndex >= m_visible.size())
+    const int photoIndex = photoIndexAt(flatIndex);
+    if (photoIndex < 0)
         return false;
-    const QString path = m_photos.at(m_visible.at(flatIndex)).path;
+    const QString path = m_photos.at(photoIndex).path;
     return movePathsToTrash({ path }) > 0;
 }
 
@@ -1150,10 +1263,19 @@ int PhotoModel::indexForPath(const QString &path) const
 {
     const QString clean = QDir::cleanPath(path);
     for (int i = 0; i < m_visible.size(); ++i) {
-        if (m_photos.at(m_visible.at(i)).path == clean)
+        const int photoIndex = photoIndexAt(i);
+        if (photoIndex >= 0 && m_photos.at(photoIndex).path == clean)
             return i;
     }
     return -1;
+}
+
+int PhotoModel::photoIndexAt(int visiblePos) const
+{
+    if (visiblePos < 0 || visiblePos >= m_visible.size())
+        return -1;
+    const int idx = m_visible.at(visiblePos);
+    return (idx >= 0 && idx < m_photos.size()) ? idx : -1;
 }
 
 QString PhotoModel::photoPathInRow(int row) const
@@ -1163,7 +1285,8 @@ QString PhotoModel::photoPathInRow(int row) const
     const Row &meta = m_rows.at(row);
     if (meta.count <= 0 || meta.first < 0 || meta.first >= m_visible.size())
         return {};
-    return m_photos.at(m_visible.at(meta.first)).path;
+    const int photoIndex = photoIndexAt(meta.first);
+    return photoIndex >= 0 ? m_photos.at(photoIndex).path : QString();
 }
 
 int PhotoModel::rowForFlatIndex(int flatIndex) const
@@ -1188,7 +1311,8 @@ int PhotoModel::rowForPath(const QString &path) const
 {
     const QString clean = QDir::cleanPath(path);
     for (int i = 0; i < m_visible.size(); ++i) {
-        if (m_photos.at(m_visible.at(i)).path == clean)
+        const int photoIndex = photoIndexAt(i);
+        if (photoIndex >= 0 && m_photos.at(photoIndex).path == clean)
             return rowForFlatIndex(i);
     }
     return -1;
@@ -1215,7 +1339,10 @@ QVariant PhotoModel::data(const QModelIndex &index, int role) const
         photos.reserve(row.count);
         const int stop = row.first + row.count;
         for (int position = row.first; position < stop; ++position) {
-            const PhotoEntry &photo = m_photos.at(m_visible.at(position));
+            const int photoIndex = photoIndexAt(position);
+            if (photoIndex < 0)
+                continue;
+            const PhotoEntry &photo = m_photos.at(photoIndex);
             photos.append(QVariantMap{
                 { QStringLiteral("index"), position },
                 { QStringLiteral("path"), photo.path },

@@ -375,7 +375,7 @@ Item {
         }
         Text {
             anchors.horizontalCenter: parent.horizontalCenter
-            text: qsTr("把图片放进 ~/Pictures 就会出现在这里")
+            text: qsTr("把图片放进图片文件夹就会出现在这里")
             font.family: Theme.fontFamily
             font.pixelSize: 12
             color: Theme.faint

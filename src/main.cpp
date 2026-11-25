@@ -33,7 +33,7 @@ int main(int argc, char *argv[])
     QGuiApplication::setOrganizationName(QStringLiteral("denial"));
     QGuiApplication::setOrganizationDomain(QStringLiteral("dev.denial"));
     QGuiApplication::setApplicationName(QStringLiteral("gallery"));
-    QGuiApplication::setApplicationVersion(QStringLiteral("0.1.0"));
+    QGuiApplication::setApplicationVersion(QStringLiteral("0.1.13"));
     // Wayland app_id，必须与 .desktop 文件名 / StartupWMClass 一致
     QGuiApplication::setDesktopFileName(QStringLiteral("dev.denial.gallery"));
     QGuiApplication::setWindowIcon(QIcon(QStringLiteral(":/resources/dev.denial.gallery.svg")));
@@ -252,16 +252,35 @@ int main(int argc, char *argv[])
         // 开发辅助：向舞台中心发送滚轮事件，验证滚轮切换 / Ctrl+滚轮缩放
         if (qEnvironmentVariableIsSet("GALLERY_WHEEL_TEST")) {
             const QString mode = qEnvironmentVariable("GALLERY_WHEEL_TEST");
-            QTimer::singleShot(1100, win, [win, mode] {
+            const int repeat = qMax(1, qEnvironmentVariableIntValue("GALLERY_WHEEL_REPEAT"));
+            const QPoint angle = (mode == QLatin1String("ctrl"))
+                                     ? QPoint(0, 120) : QPoint(0, -120);
+            const Qt::KeyboardModifiers modifiers = (mode == QLatin1String("ctrl"))
+                                                        ? Qt::ControlModifier : Qt::NoModifier;
+            auto *wheelTimer = new QTimer(win);
+            wheelTimer->setInterval(350); // 大于 Viewer 的切换防抖间隔
+            wheelTimer->setProperty("sent", 0);
+            QObject::connect(wheelTimer, &QTimer::timeout, win,
+                             [win, angle, modifiers, wheelTimer, repeat] {
+                const int sent = wheelTimer->property("sent").toInt() + 1;
+                wheelTimer->setProperty("sent", sent);
+                if (sent > repeat) {
+                    wheelTimer->stop();
+                    wheelTimer->deleteLater();
+                    return;
+                }
                 const QPointF pos(win->width() * 0.6, win->height() * 0.5);
-                const QPoint angle = (mode == QLatin1String("ctrl"))
-                                         ? QPoint(0, 120) : QPoint(0, -120);
-                const Qt::KeyboardModifiers modifiers = (mode == QLatin1String("ctrl"))
-                                                            ? Qt::ControlModifier : Qt::NoModifier;
                 QWheelEvent event(pos, win->mapToGlobal(pos.toPoint()), QPoint(), angle,
                                   Qt::NoButton, modifiers, Qt::NoScrollPhase, false);
                 QCoreApplication::sendEvent(win, &event);
-                qInfo() << "wheel test" << mode << "accepted=" << event.isAccepted();
+            });
+            QTimer::singleShot(1100, win, [wheelTimer] { wheelTimer->start(); });
+        }
+        // 开发辅助：发送一次 Esc（退出查看模式回网格）
+        if (qEnvironmentVariableIntValue("GALLERY_ESCAPE") != 0) {
+            QTimer::singleShot(1600, win, [win] {
+                QKeyEvent event(QEvent::KeyPress, Qt::Key_Escape, Qt::NoModifier);
+                QCoreApplication::sendEvent(win, &event);
             });
         }
     }
@@ -281,7 +300,7 @@ int main(int argc, char *argv[])
             QObject::connect(socket, &QLocalSocket::readyRead, socket, [socket, win] {
                 const QString message = QString::fromUtf8(socket->readAll());
                 if (win) {
-                    QMetaObject::invokeMethod(win, "openPath", Q_ARG(QString, message));
+                    QMetaObject::invokeMethod(win, "openFromLauncher", Q_ARG(QString, message));
                     win->requestActivate();
                 }
                 socket->disconnectFromServer();
@@ -291,7 +310,7 @@ int main(int argc, char *argv[])
             if (socket->bytesAvailable() > 0) {
                 const QString message = QString::fromUtf8(socket->readAll());
                 if (win) {
-                    QMetaObject::invokeMethod(win, "openPath", Q_ARG(QString, message));
+                    QMetaObject::invokeMethod(win, "openFromLauncher", Q_ARG(QString, message));
                     win->requestActivate();
                 }
             }
@@ -299,12 +318,20 @@ int main(int argc, char *argv[])
     });
 
     if (!initialPath.isEmpty()) {
-        QTimer::singleShot(600, &app, [&engine, initialPath] {
+        // 等 QML 根对象就绪再投递（首次启动可能晚于固定延时），就绪前持续轮询
+        auto *openTimer = new QTimer(&app);
+        openTimer->setInterval(150);
+        QObject::connect(openTimer, &QTimer::timeout, &app, [&engine, initialPath, openTimer] {
             if (engine.rootObjects().isEmpty())
                 return;
-            if (auto *win = qobject_cast<QQuickWindow *>(engine.rootObjects().constFirst()))
-                QMetaObject::invokeMethod(win, "openPath", Q_ARG(QString, initialPath));
+            auto *win = qobject_cast<QQuickWindow *>(engine.rootObjects().constFirst());
+            if (!win)
+                return;
+            QMetaObject::invokeMethod(win, "openFromLauncher", Q_ARG(QString, initialPath));
+            openTimer->stop();
+            openTimer->deleteLater();
         });
+        openTimer->start();
     }
 
     // 开发辅助：GALLERY_SCREENSHOT=/tmp/shot.png 时渲染一帧后退出（配合 offscreen 平台）

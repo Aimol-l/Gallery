@@ -356,7 +356,9 @@ Item {
 
                     SettingRow {
                         label: qsTr("扫描目录")
-                        description: qsTr("~/Pictures（递归）· ~/Downloads · ~/Documents")
+                        // 实际生效的目录（随 XDG 用户目录 / 语言变化）
+                        description: root.model.sidebarEntries
+                                     .map(e => e.label).join(" · ")
                     }
                     SettingRow {
                         label: qsTr("去重规则")

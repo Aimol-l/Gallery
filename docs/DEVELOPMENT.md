@@ -115,7 +115,10 @@ GALLERY_HOME=/tmp/gallery-home GALLERY_SCREENSHOT=/tmp/g.png \
 
 ## 5. 数据与缓存
 
-- 扫描根：`~/Pictures`（递归）、`~/Downloads`、`~/Documents`；`Pictures/Screenshots`、`Pictures/Camera` 为独立入口。
+- 扫描根：QStandardPaths 用户目录（Linux 读 XDG user-dirs，目录名随系统语言；GALLERY_HOME
+  下退回假 home 的固定英文名）：图片（递归）、下载、文档；图片下存在的 `Screenshots/`、
+  `Camera/`（不存在则 `~/DCIM/Camera`）为独立入口。侧栏/竖屏 chips 数据驱动
+  （`PhotoModel.sidebarEntries`），只列实际存在的目录。
 - 去重：每个文件只归到「最长路径前缀」的根，嵌套根只扫描一次。
 - 缩略图：`~/.cache/denial/gallery/thumbs/<sha1>.png`（key = path|mtime|size），图片用 `QImageReader` 缩放解码，视频用 `ffmpeg -ss 1 ... -vf scale=256:-2`。默认上限 1GB，启动时在后台按最旧清理；设置里可改 512MB/1/2GB/不限。
 - 索引缓存：`~/.cache/denial/gallery/index.bin`（紧凑二进制，含扫描根校验）。启动时先读缓存立即显示，再后台静默扫描；静默扫描用「路径 → 元数据签名」比对，不复制整库，文件集未变化不重建。
@@ -208,11 +211,11 @@ python3 build.py --target aarch64 --pkg arch
 | 网格 ← / → / ↑ / ↓ + Enter | 移动选中并打开 |
 | 长按缩略图 | 进入多选（当前项选中）；多选时单击切换选中 |
 | 多选顶部 | 显示「已选 N 张」「取消」；N > 0 时显示「删除」，确认后批量移到回收站 |
-| 拖放文件到窗口 | 打开该图片（需在扫描根内） |
+| 拖放文件到窗口 | 打开该图片；不在库内时临时索引其所在目录 |
 | 双击标题栏 | 最大化 / 还原 |
 | 方向键 / Enter | 网格移动选中 / 打开 |
 | 缩放后拖动 | 平移 |
-| ← / → | 上一张 / 下一张 |
+| ← / → | 上一张 / 下一张（首尾循环） |
 | Esc | 关信息面板 → 返回网格 |
 | 底部删除 | 确认后移到回收站 |
 | ⓘ | 信息面板（含收藏切换） |

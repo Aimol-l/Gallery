@@ -38,6 +38,8 @@ class PhotoModel : public QAbstractListModel
     Q_PROPERTY(int photoCount READ photoCount NOTIFY photoCountChanged)
     Q_PROPERTY(QString title READ title NOTIFY filterChanged)
     Q_PROPERTY(QVariantMap counts READ counts NOTIFY countsChanged)
+    // 实际存在的文件夹入口（id + 本地化显示名），侧栏/竖屏 chips 数据驱动
+    Q_PROPERTY(QVariantList sidebarEntries READ sidebarEntries NOTIFY rootsChanged)
     Q_PROPERTY(bool scanning READ scanning NOTIFY scanningChanged)
     Q_PROPERTY(int recentDays READ recentDays WRITE setRecentDays NOTIFY recentDaysChanged)
     Q_PROPERTY(int revision READ revision NOTIFY revisionChanged)
@@ -67,12 +69,18 @@ public:
     int photoCount() const { return m_visible.size(); }
     QString title() const;
     QVariantMap counts() const { return m_counts; }
+    QVariantList sidebarEntries() const;
     bool scanning() const { return m_scanning; }
     int recentDays() const { return m_recentDays; }
     void setRecentDays(int days);
     int revision() const { return m_revision; }
 
     Q_INVOKABLE void scan();
+    // 打开单个文件：确保其所在目录可被扫描（仅对扫描根外的文件追加一个
+    // 不进侧栏的临时根），不改变主页的文件夹项与扫描范围。
+    Q_INVOKABLE bool openFileScope(const QString &filePath);
+    // 某文件同目录（不含子目录）照片的扁平索引，用于 viewer 的目录播放列表
+    Q_INVOKABLE QVariantList indicesInDirectory(const QString &filePath) const;
     Q_INVOKABLE void toggleFavorite(int flatIndex);
     Q_INVOKABLE QVariantMap photoAt(int flatIndex) const;
     Q_INVOKABLE QVariantMap photoInfo(int flatIndex) const;
@@ -93,6 +101,7 @@ signals:
     void columnsChanged();
     void photoCountChanged();
     void countsChanged();
+    void rootsChanged();
     void scanningChanged();
     void recentDaysChanged();
     void revisionChanged();
@@ -104,6 +113,7 @@ private:
         QString id;
         QString label;
         QString path;
+        bool flat = false; // true：只扫本目录（文件管理器打开的单目录作用域）
     };
     struct Group
     {
@@ -129,8 +139,11 @@ private:
         bool operator==(const Signature &other) const = default;
     };
 
-    static QVector<Root> buildRoots();
-    static QString folderLabel(const QString &id);
+    // 成员函数：buildRoots 里的显示名要走 tr()（随语言翻译）
+    QVector<Root> buildRoots() const;
+    QString folderLabel(const QString &id) const;
+    // m_visible 位置 → m_photos 下标；rebuild 中途两者可能短暂不同步，越界返回 -1
+    int photoIndexAt(int visiblePos) const;
     static Signature signatureFor(const PhotoEntry &entry);
     static bool makeEntry(const QFileInfo &info, const QString &rootPath,
                           const QVector<Root> &roots, PhotoEntry *entry);
@@ -188,6 +201,7 @@ private:
     // 目录监听 / 增量重扫
     QSet<QString> m_scanDirs;
     QSet<QString> m_watchedDirs;
+    QString m_scopeDir; // 非空 = 单目录作用域（跳过索引缓存读写）
     QSet<QString> m_pendingDirs;
     bool m_watchCapped = false;
 

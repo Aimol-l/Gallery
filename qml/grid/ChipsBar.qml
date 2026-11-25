@@ -29,14 +29,13 @@ Item {
         orientation: ListView.Horizontal
         spacing: 8
         clip: true
+        // 快捷筛选 + 实际存在的文件夹入口（PhotoModel.sidebarEntries），
+        // 与桌面侧栏同一份数据，不写死
         model: [
             { id: "all", label: qsTr("全部") },
             { id: "recent", label: qsTr("最近") },
             { id: "favorites", label: qsTr("收藏") },
-            { id: "screenshots", label: qsTr("截图") },
-            { id: "camera", label: qsTr("Android 相机") },
-            { id: "downloads", label: qsTr("下载") },
-        ]
+        ].concat(root.model.sidebarEntries)
 
         delegate: Rectangle {
             id: chip
